@@ -44,6 +44,7 @@ def attach_isin(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.merge(master[["ticker", "isin"]], on="ticker", how="left")
     df.loc[df["ticker"].eq("CASH"), "isin"] = "CASH_KRW"
+    df["isin"] = df["isin"].where(df["isin"].notna(), None)
     return df
 
 

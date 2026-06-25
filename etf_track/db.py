@@ -55,6 +55,15 @@ def _clean_number(value: Any) -> Decimal | None:
         return None
 
 
+def _clean_text(value: Any) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    if text == "" or text.lower() in {"nan", "none", "null"}:
+        return None
+    return text
+
+
 def upsert_holdings(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
@@ -67,7 +76,7 @@ def upsert_holdings(df: pd.DataFrame) -> int:
                 "trade_date": record["trade_date"],
                 "etf_code": record["etf_code"],
                 "ticker": str(record["ticker"]),
-                "isin": record.get("isin") or None,
+                "isin": _clean_text(record.get("isin")),
                 "name": str(record["name"]),
                 "quantity": _clean_number(record.get("quantity")),
                 "market_value": _clean_number(record.get("market_value")),
@@ -160,12 +169,13 @@ def fetch_compare(trade_date: date | None = None, left: str = "TIME_KOSPI_ACTIVE
     for row in records:
         if row["etf_code"] not in {left, right}:
             continue
-        key = row["isin"] or row["ticker"]
+        isin = _clean_text(row["isin"])
+        key = isin or row["ticker"]
         bucket = by_key.setdefault(
             key,
             {
                 "trade_date": str(trade_date),
-                "isin": row["isin"],
+                "isin": isin,
                 "ticker": row["ticker"],
                 "name": row["name"],
                 "time_weight": 0.0,
