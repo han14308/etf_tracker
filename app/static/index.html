@@ -26,12 +26,12 @@
     tbody tr:hover { background: #f8fbff; }
     .panel { margin-top: 20px; background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
     .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+    .panel-tools { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
     .chart { width: 100%; height: 320px; border: 1px solid #edf0f2; background: #fff; }
     .legend { display: flex; gap: 16px; font-size: 13px; color: #475467; }
     .dot { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; }
     .time { background: #1f6feb; }
     .kodex { background: #f97316; }
-    .diff { background: #16a34a; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } main, header { padding: 18px; } }
   </style>
 </head>
@@ -60,10 +60,18 @@
           <strong id="historyTitle">종목을 클릭하면 한 달 비중 추이를 볼 수 있습니다.</strong>
           <div id="historySub" class="muted"></div>
         </div>
-        <div class="legend">
-          <span><span class="dot time"></span>TIME 비중</span>
-          <span><span class="dot kodex"></span>KODEX 비중</span>
-          <span><span class="dot diff"></span>차이</span>
+        <div class="panel-tools">
+          <label>그래프 기준
+            <select id="metric">
+              <option value="weight">비중</option>
+              <option value="market_value">평가금액</option>
+              <option value="quantity">수량</option>
+            </select>
+          </label>
+          <div class="legend">
+            <span><span class="dot time"></span>TIME</span>
+            <span><span class="dot kodex"></span>KODEX</span>
+          </div>
         </div>
       </div>
       <canvas id="historyChart" class="chart"></canvas>
@@ -152,7 +160,8 @@
     async function showHistory(row) {
       const qs = row.isin ? `isin=${encodeURIComponent(row.isin)}` : `ticker=${encodeURIComponent(row.ticker)}`;
       const data = await fetch(`/api/security-history?${qs}`).then(r => r.json());
-      document.getElementById('historyTitle').textContent = `${row.name || row.ticker} 한 달 비중 추이`;
+      state.historyData = data;
+      document.getElementById('historyTitle').textContent = `${row.name || row.ticker} 한 달 추이`;
       document.getElementById('historySub').textContent = `${row.ticker || ''} ${row.isin || ''}`;
       drawChart(data);
     }
@@ -175,7 +184,15 @@
         ctx.fillText('추이 데이터가 없습니다.', 24, 32);
         return;
       }
-      const values = points.flatMap(x => [x.time_weight || 0, x.kodex_weight || 0, Math.abs(x.weight_diff || 0)]);
+      const metric = document.getElementById('metric').value;
+      const labels = {
+        weight: '비중',
+        market_value: '평가금액',
+        quantity: '수량',
+      };
+      const timeKey = `time_${metric}`;
+      const kodexKey = `kodex_${metric}`;
+      const values = points.flatMap(x => [x[timeKey] || 0, x[kodexKey] || 0]);
       const max = Math.max(1, ...values) * 1.15;
       const x = i => pad.left + (points.length === 1 ? 0 : i * (w - pad.left - pad.right) / (points.length - 1));
       const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
@@ -190,7 +207,8 @@
 
       [0, max / 2, max].forEach(v => {
         ctx.fillStyle = '#667085';
-        ctx.fillText(v.toFixed(1) + '%', 8, y(v) + 4);
+        const label = metric === 'weight' ? v.toFixed(1) + '%' : shortNum(v);
+        ctx.fillText(label, 8, y(v) + 4);
         ctx.strokeStyle = '#eef2f6';
         ctx.beginPath();
         ctx.moveTo(pad.left, y(v));
@@ -198,9 +216,11 @@
         ctx.stroke();
       });
 
-      drawLine(points.map((p, i) => [x(i), y(p.time_weight || 0)]), '#1f6feb');
-      drawLine(points.map((p, i) => [x(i), y(p.kodex_weight || 0)]), '#f97316');
-      drawLine(points.map((p, i) => [x(i), y(Math.abs(p.weight_diff || 0))]), '#16a34a');
+      drawLine(points.map((p, i) => [x(i), y(p[timeKey] || 0)]), '#1f6feb');
+      drawLine(points.map((p, i) => [x(i), y(p[kodexKey] || 0)]), '#f97316');
+
+      ctx.fillStyle = '#344054';
+      ctx.fillText(labels[metric], pad.left, 14);
 
       ctx.fillStyle = '#667085';
       points.forEach((p, i) => {
@@ -226,9 +246,17 @@
           ctx.fill();
         });
       }
+
+      function shortNum(value) {
+        const abs = Math.abs(value);
+        if (abs >= 100000000) return (value / 100000000).toFixed(1) + '억';
+        if (abs >= 10000) return (value / 10000).toFixed(1) + '만';
+        return Number(value || 0).toFixed(0);
+      }
     }
 
     document.getElementById('refresh').addEventListener('click', loadCompare);
+    document.getElementById('metric').addEventListener('change', () => drawChart(state.historyData || []));
     loadDates().then(loadCompare);
   </script>
 </body>
