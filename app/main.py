@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+from etf_track.backfill import get_backfill_status, start_backfill
+from etf_track.config import BACKFILL_TOKEN
 from etf_track.db import fetch_compare, fetch_dates, fetch_holdings, fetch_summary, init_db
 
 app = FastAPI(title="ETF Track")
@@ -49,3 +51,23 @@ def compare(
     right: str = Query(default="KODEX_200"),
 ) -> list[dict]:
     return fetch_compare(trade_date=trade_date, left=left, right=right)
+
+
+@app.post("/api/admin/backfill")
+@app.get("/api/admin/backfill")
+def trigger_backfill(
+    token: str = Query(default=""),
+    days: int = Query(default=3, ge=1, le=31),
+) -> dict:
+    if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid backfill token")
+    started = start_backfill(days)
+    status = get_backfill_status()
+    return {"started": started, "status": status}
+
+
+@app.get("/api/admin/backfill/status")
+def backfill_status(token: str = Query(default="")) -> dict:
+    if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid backfill token")
+    return get_backfill_status()
