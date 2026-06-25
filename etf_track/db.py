@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Date, MetaData, Numeric, String, Table, create_engine, delete, func, select
+from sqlalchemy import Date, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
@@ -34,8 +34,10 @@ def get_engine() -> Engine:
     database_url = DATABASE_URL
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    return create_engine(database_url, future=True, connect_args=connect_args)
+    connect_args: dict[str, Any] = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    if database_url.startswith("postgresql"):
+        connect_args["prepare_threshold"] = None
+    return create_engine(database_url, future=True, connect_args=connect_args, pool_pre_ping=True)
 
 
 def init_db() -> None:
@@ -108,6 +110,8 @@ def _row_to_dict(row: Any) -> dict:
     for key, value in list(data.items()):
         if isinstance(value, Decimal):
             data[key] = float(value)
+        elif isinstance(value, date):
+            data[key] = value.isoformat()
     return data
 
 
@@ -118,7 +122,7 @@ def fetch_holdings(trade_date: date | None = None, etf_code: str | None = None) 
         stmt = stmt.where(holdings.c.trade_date == trade_date)
     if etf_code:
         stmt = stmt.where(holdings.c.etf_code == etf_code)
-    stmt = stmt.order_by(holdings.c.trade_date.desc(), holdings.c.etf_code, holdings.c.weight.desc().nullslast())
+    stmt = stmt.order_by(holdings.c.trade_date.desc(), holdings.c.etf_code, desc(holdings.c.weight))
     with get_engine().connect() as conn:
         return [_row_to_dict(row) for row in conn.execute(stmt)]
 
