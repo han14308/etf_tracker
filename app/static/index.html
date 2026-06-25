@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ETF Track</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; color: #161616; background: #f7f8fa; }
+    header { padding: 24px 32px; background: #ffffff; border-bottom: 1px solid #e6e8eb; }
+    main { padding: 24px 32px 48px; max-width: 1200px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .muted { color: #667085; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 24px 0; }
+    select, button { height: 36px; padding: 0 12px; border: 1px solid #cfd4dc; background: #fff; }
+    button { cursor: pointer; background: #1f6feb; color: white; border-color: #1f6feb; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .card { background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
+    .metric { font-size: 26px; font-weight: 700; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e6e8eb; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 14px; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th { background: #f2f4f7; color: #344054; }
+    .section-title { margin: 28px 0 12px; font-size: 18px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } main, header { padding: 18px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ETF Track</h1>
+    <div class="muted">TIME 코스피액티브 vs KODEX 200 구성종목 비교</div>
+  </header>
+  <main>
+    <div class="toolbar">
+      <label>기준일 <select id="date"></select></label>
+      <button id="refresh">조회</button>
+    </div>
+
+    <div class="grid">
+      <div class="card"><div class="muted">공통 ISIN 수</div><div id="commonCount" class="metric">-</div></div>
+      <div class="card"><div class="muted">TIME 종목 수</div><div id="timeCount" class="metric">-</div></div>
+      <div class="card"><div class="muted">KODEX 종목 수</div><div id="kodexCount" class="metric">-</div></div>
+      <div class="card"><div class="muted">공통 최소비중 합</div><div id="overlap" class="metric">-</div></div>
+    </div>
+
+    <h2 class="section-title">비중 차이 TOP 30</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ISIN</th>
+          <th>종목명</th>
+          <th>TIME 비중</th>
+          <th>KODEX 비중</th>
+          <th>차이</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+
+  <script>
+    async function loadDates() {
+      const dates = await fetch('/api/dates').then(r => r.json());
+      const select = document.getElementById('date');
+      select.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+
+    function fmt(v) {
+      return Number(v || 0).toFixed(2) + '%';
+    }
+
+    async function loadCompare() {
+      const date = document.getElementById('date').value;
+      if (!date) return;
+      const data = await fetch(`/api/compare?trade_date=${date}`).then(r => r.json());
+      const common = data.filter(x => x.time_weight > 0 && x.kodex_weight > 0);
+      document.getElementById('commonCount').textContent = common.length;
+      document.getElementById('timeCount').textContent = data.filter(x => x.time_weight > 0).length;
+      document.getElementById('kodexCount').textContent = data.filter(x => x.kodex_weight > 0).length;
+      const overlap = common.reduce((s, x) => s + Math.min(x.time_weight, x.kodex_weight), 0);
+      document.getElementById('overlap').textContent = fmt(overlap);
+
+      const rows = data
+        .sort((a, b) => Math.abs(b.weight_diff) - Math.abs(a.weight_diff))
+        .slice(0, 30)
+        .map(x => `<tr><td>${x.isin || ''}</td><td>${x.name || ''}</td><td>${fmt(x.time_weight)}</td><td>${fmt(x.kodex_weight)}</td><td>${fmt(x.weight_diff)}</td></tr>`)
+        .join('');
+      document.getElementById('rows').innerHTML = rows || '<tr><td colspan="5">데이터가 없습니다.</td></tr>';
+    }
+
+    document.getElementById('refresh').addEventListener('click', loadCompare);
+    loadDates().then(loadCompare);
+  </script>
+</body>
+</html>

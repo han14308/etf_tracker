@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: etf-track-api
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TIME_KOSPI_ACTIVE_IDX
+        value: "11"
+      - key: KODEX_200_FID
+        value: "2ETF01"
+
+  - type: cron
+    name: etf-track-daily-collector
+    runtime: python
+    plan: starter
+    schedule: "30 9 * * MON-FRI"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python jobs/collect_holdings.py
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TIME_KOSPI_ACTIVE_IDX
+        value: "11"
+      - key: KODEX_200_FID
+        value: "2ETF01"
