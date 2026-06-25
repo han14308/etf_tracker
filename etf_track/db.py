@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any
 
 import pandas as pd
@@ -30,6 +31,7 @@ holdings = Table(
 )
 
 
+@lru_cache(maxsize=1)
 def get_engine() -> Engine:
     database_url = DATABASE_URL
     if database_url.startswith("postgresql://"):
@@ -37,6 +39,15 @@ def get_engine() -> Engine:
     connect_args: dict[str, Any] = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     if database_url.startswith("postgresql"):
         connect_args["prepare_threshold"] = None
+        return create_engine(
+            database_url,
+            future=True,
+            connect_args=connect_args,
+            pool_pre_ping=True,
+            pool_size=1,
+            max_overflow=0,
+            pool_recycle=300,
+        )
     return create_engine(database_url, future=True, connect_args=connect_args, pool_pre_ping=True)
 
 
