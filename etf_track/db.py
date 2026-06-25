@@ -190,17 +190,80 @@ def fetch_compare(trade_date: date | None = None, left: str = "TIME_KOSPI_ACTIVE
                 "ticker": row["ticker"],
                 "name": row["name"],
                 "time_weight": 0.0,
+                "time_quantity": None,
+                "time_market_value": None,
                 "kodex_weight": 0.0,
+                "kodex_quantity": None,
+                "kodex_market_value": None,
             },
         )
         if row["etf_code"] == left:
             bucket["time_weight"] = float(row["weight"] or 0)
+            bucket["time_quantity"] = row["quantity"]
+            bucket["time_market_value"] = row["market_value"]
             bucket["name"] = row["name"]
         elif row["etf_code"] == right:
             bucket["kodex_weight"] = float(row["weight"] or 0)
+            bucket["kodex_quantity"] = row["quantity"]
+            bucket["kodex_market_value"] = row["market_value"]
 
     result = []
     for row in by_key.values():
         row["weight_diff"] = row["time_weight"] - row["kodex_weight"]
         result.append(row)
+    return result
+
+
+def fetch_security_history(
+    ticker: str | None = None,
+    isin: str | None = None,
+    left: str = "TIME_KOSPI_ACTIVE",
+    right: str = "KODEX_200",
+) -> list[dict]:
+    init_db()
+    ticker = _clean_text(ticker)
+    isin = _clean_text(isin)
+    if not ticker and not isin:
+        return []
+
+    stmt = select(holdings).where(holdings.c.etf_code.in_([left, right]))
+    if isin:
+        stmt = stmt.where(holdings.c.isin == isin)
+    else:
+        stmt = stmt.where(holdings.c.ticker == ticker)
+    stmt = stmt.order_by(holdings.c.trade_date.asc(), holdings.c.etf_code)
+
+    with get_engine().connect() as conn:
+        records = [_row_to_dict(row) for row in conn.execute(stmt)]
+
+    by_date: dict[str, dict] = {}
+    for row in records:
+        trade_date = row["trade_date"]
+        bucket = by_date.setdefault(
+            trade_date,
+            {
+                "trade_date": trade_date,
+                "ticker": row["ticker"],
+                "isin": row["isin"],
+                "name": row["name"],
+                "time_weight": 0.0,
+                "time_quantity": None,
+                "time_market_value": None,
+                "kodex_weight": 0.0,
+                "kodex_quantity": None,
+                "kodex_market_value": None,
+            },
+        )
+        if row["etf_code"] == left:
+            bucket["time_weight"] = float(row["weight"] or 0)
+            bucket["time_quantity"] = row["quantity"]
+            bucket["time_market_value"] = row["market_value"]
+            bucket["name"] = row["name"]
+        elif row["etf_code"] == right:
+            bucket["kodex_weight"] = float(row["weight"] or 0)
+            bucket["kodex_quantity"] = row["quantity"]
+            bucket["kodex_market_value"] = row["market_value"]
+    result = list(by_date.values())
+    for row in result:
+        row["weight_diff"] = row["time_weight"] - row["kodex_weight"]
     return result

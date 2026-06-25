@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from etf_track.backfill import get_backfill_status, start_backfill
 from etf_track.config import BACKFILL_TOKEN
-from etf_track.db import fetch_compare, fetch_dates, fetch_holdings, fetch_summary, init_db
+from etf_track.db import fetch_compare, fetch_dates, fetch_holdings, fetch_security_history, fetch_summary, init_db
 
 app = FastAPI(title="ETF Track")
 
@@ -51,6 +51,16 @@ def compare(
     right: str = Query(default="KODEX_200"),
 ) -> list[dict]:
     return fetch_compare(trade_date=trade_date, left=left, right=right)
+
+
+@app.get("/api/security-history")
+def security_history(
+    ticker: str | None = Query(default=None),
+    isin: str | None = Query(default=None),
+    left: str = Query(default="TIME_KOSPI_ACTIVE"),
+    right: str = Query(default="KODEX_200"),
+) -> list[dict]:
+    return fetch_security_history(ticker=ticker, isin=isin, left=left, right=right)
 
 
 @app.post("/api/admin/backfill")

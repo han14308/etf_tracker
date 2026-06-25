@@ -6,22 +6,33 @@
   <title>ETF Track</title>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; color: #161616; background: #f7f8fa; }
-    header { padding: 24px 32px; background: #ffffff; border-bottom: 1px solid #e6e8eb; }
-    main { padding: 24px 32px 48px; max-width: 1200px; margin: 0 auto; }
+    header { padding: 24px 32px; background: #fff; border-bottom: 1px solid #e6e8eb; }
+    main { padding: 24px 32px 48px; max-width: 1440px; margin: 0 auto; }
     h1 { margin: 0 0 8px; font-size: 28px; }
     .muted { color: #667085; }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin: 24px 0; }
+    .toolbar { display: flex; gap: 12px; align-items: center; margin: 24px 0; flex-wrap: wrap; }
     select, button { height: 36px; padding: 0 12px; border: 1px solid #cfd4dc; background: #fff; }
-    button { cursor: pointer; background: #1f6feb; color: white; border-color: #1f6feb; }
+    button { cursor: pointer; background: #1f6feb; color: #fff; border-color: #1f6feb; }
     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     .card { background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
     .metric { font-size: 26px; font-weight: 700; margin-top: 8px; }
-    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e6e8eb; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 14px; }
-    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
-    th { background: #f2f4f7; color: #344054; }
     .section-title { margin: 28px 0 12px; font-size: 18px; }
-    @media (max-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } main, header { padding: 18px; } }
+    .table-wrap { overflow: auto; border: 1px solid #e6e8eb; background: #fff; }
+    table { min-width: 1180px; width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 13px; white-space: nowrap; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+    th { background: #f2f4f7; color: #344054; position: sticky; top: 0; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #f8fbff; }
+    .panel { margin-top: 20px; background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
+    .panel-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 12px; }
+    .chart { width: 100%; height: 320px; border: 1px solid #edf0f2; background: #fff; }
+    .legend { display: flex; gap: 16px; font-size: 13px; color: #475467; }
+    .dot { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 50%; }
+    .time { background: #1f6feb; }
+    .kodex { background: #f97316; }
+    .diff { background: #16a34a; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } main, header { padding: 18px; } }
   </style>
 </head>
 <body>
@@ -33,58 +44,188 @@
     <div class="toolbar">
       <label>기준일 <select id="date"></select></label>
       <button id="refresh">조회</button>
+      <span id="status" class="muted"></span>
     </div>
 
     <div class="grid">
-      <div class="card"><div class="muted">공통 ISIN 수</div><div id="commonCount" class="metric">-</div></div>
+      <div class="card"><div class="muted">공통 종목 수</div><div id="commonCount" class="metric">-</div></div>
       <div class="card"><div class="muted">TIME 종목 수</div><div id="timeCount" class="metric">-</div></div>
       <div class="card"><div class="muted">KODEX 종목 수</div><div id="kodexCount" class="metric">-</div></div>
       <div class="card"><div class="muted">공통 최소비중 합</div><div id="overlap" class="metric">-</div></div>
     </div>
 
+    <div class="panel" id="historyPanel">
+      <div class="panel-head">
+        <div>
+          <strong id="historyTitle">종목을 클릭하면 한 달 비중 추이를 볼 수 있습니다.</strong>
+          <div id="historySub" class="muted"></div>
+        </div>
+        <div class="legend">
+          <span><span class="dot time"></span>TIME 비중</span>
+          <span><span class="dot kodex"></span>KODEX 비중</span>
+          <span><span class="dot diff"></span>차이</span>
+        </div>
+      </div>
+      <canvas id="historyChart" class="chart"></canvas>
+    </div>
+
     <h2 class="section-title">전체 구성종목</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ISIN</th>
-          <th>종목코드</th>
-          <th>종목명</th>
-          <th>TIME 비중</th>
-          <th>KODEX 비중</th>
-          <th>차이</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ISIN</th>
+            <th>종목코드</th>
+            <th>종목명</th>
+            <th>TIME 수량</th>
+            <th>TIME 평가금액</th>
+            <th>TIME 비중</th>
+            <th>KODEX 수량</th>
+            <th>KODEX 평가금액</th>
+            <th>KODEX 비중</th>
+            <th>비중 차이</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
   </main>
 
   <script>
+    const state = { rows: [] };
+
     async function loadDates() {
       const dates = await fetch('/api/dates').then(r => r.json());
       const select = document.getElementById('date');
       select.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
     }
 
-    function fmt(v) {
+    function fmtPct(v) {
       return Number(v || 0).toFixed(2) + '%';
+    }
+
+    function fmtNum(v, digits = 0) {
+      if (v === null || v === undefined || v === '') return '-';
+      return Number(v || 0).toLocaleString('ko-KR', { maximumFractionDigits: digits });
     }
 
     async function loadCompare() {
       const date = document.getElementById('date').value;
       if (!date) return;
+      document.getElementById('status').textContent = '조회 중...';
       const data = await fetch(`/api/compare?trade_date=${date}`).then(r => r.json());
+      state.rows = data;
       const common = data.filter(x => x.time_weight > 0 && x.kodex_weight > 0);
       document.getElementById('commonCount').textContent = common.length;
       document.getElementById('timeCount').textContent = data.filter(x => x.time_weight > 0).length;
       document.getElementById('kodexCount').textContent = data.filter(x => x.kodex_weight > 0).length;
       const overlap = common.reduce((s, x) => s + Math.min(x.time_weight, x.kodex_weight), 0);
-      document.getElementById('overlap').textContent = fmt(overlap);
+      document.getElementById('overlap').textContent = fmtPct(overlap);
+      renderRows(data);
+      document.getElementById('status').textContent = `${data.length}개 종목`;
+    }
 
-      const rows = data
-        .sort((a, b) => Math.abs(b.weight_diff) - Math.abs(a.weight_diff))
-        .map(x => `<tr><td>${x.isin || ''}</td><td>${x.ticker || ''}</td><td>${x.name || ''}</td><td>${fmt(x.time_weight)}</td><td>${fmt(x.kodex_weight)}</td><td>${fmt(x.weight_diff)}</td></tr>`)
+    function renderRows(data) {
+      const sorted = [...data].sort((a, b) => Math.abs(b.weight_diff) - Math.abs(a.weight_diff));
+      state.sortedRows = sorted;
+      const rows = sorted
+        .map((x, i) => `
+          <tr data-index="${i}">
+            <td>${x.isin || ''}</td>
+            <td>${x.ticker || ''}</td>
+            <td>${x.name || ''}</td>
+            <td>${fmtNum(x.time_quantity, 2)}</td>
+            <td>${fmtNum(x.time_market_value)}</td>
+            <td>${fmtPct(x.time_weight)}</td>
+            <td>${fmtNum(x.kodex_quantity, 2)}</td>
+            <td>${fmtNum(x.kodex_market_value)}</td>
+            <td>${fmtPct(x.kodex_weight)}</td>
+            <td>${fmtPct(x.weight_diff)}</td>
+          </tr>`)
         .join('');
-      document.getElementById('rows').innerHTML = rows || '<tr><td colspan="6">데이터가 없습니다.</td></tr>';
+      document.getElementById('rows').innerHTML = rows || '<tr><td colspan="10">데이터가 없습니다.</td></tr>';
+      document.querySelectorAll('#rows tr[data-index]').forEach(row => {
+        row.addEventListener('click', () => showHistory(state.sortedRows[row.dataset.index]));
+      });
+    }
+
+    async function showHistory(row) {
+      const qs = row.isin ? `isin=${encodeURIComponent(row.isin)}` : `ticker=${encodeURIComponent(row.ticker)}`;
+      const data = await fetch(`/api/security-history?${qs}`).then(r => r.json());
+      document.getElementById('historyTitle').textContent = `${row.name || row.ticker} 한 달 비중 추이`;
+      document.getElementById('historySub').textContent = `${row.ticker || ''} ${row.isin || ''}`;
+      drawChart(data);
+    }
+
+    function drawChart(data) {
+      const canvas = document.getElementById('historyChart');
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      ctx.clearRect(0, 0, w, h);
+      const pad = { left: 48, right: 18, top: 18, bottom: 42 };
+      const points = data || [];
+      if (!points.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('추이 데이터가 없습니다.', 24, 32);
+        return;
+      }
+      const values = points.flatMap(x => [x.time_weight || 0, x.kodex_weight || 0, Math.abs(x.weight_diff || 0)]);
+      const max = Math.max(1, ...values) * 1.15;
+      const x = i => pad.left + (points.length === 1 ? 0 : i * (w - pad.left - pad.right) / (points.length - 1));
+      const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
+
+      ctx.strokeStyle = '#d0d5dd';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top);
+      ctx.lineTo(pad.left, h - pad.bottom);
+      ctx.lineTo(w - pad.right, h - pad.bottom);
+      ctx.stroke();
+
+      [0, max / 2, max].forEach(v => {
+        ctx.fillStyle = '#667085';
+        ctx.fillText(v.toFixed(1) + '%', 8, y(v) + 4);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y(v));
+        ctx.lineTo(w - pad.right, y(v));
+        ctx.stroke();
+      });
+
+      drawLine(points.map((p, i) => [x(i), y(p.time_weight || 0)]), '#1f6feb');
+      drawLine(points.map((p, i) => [x(i), y(p.kodex_weight || 0)]), '#f97316');
+      drawLine(points.map((p, i) => [x(i), y(Math.abs(p.weight_diff || 0))]), '#16a34a');
+
+      ctx.fillStyle = '#667085';
+      points.forEach((p, i) => {
+        if (i === 0 || i === points.length - 1 || i % 5 === 0) {
+          ctx.save();
+          ctx.translate(x(i), h - 14);
+          ctx.rotate(-0.45);
+          ctx.fillText(p.trade_date.slice(5), 0, 0);
+          ctx.restore();
+        }
+      });
+
+      function drawLine(coords, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        coords.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+        ctx.stroke();
+        ctx.fillStyle = color;
+        coords.forEach(([px, py]) => {
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
     }
 
     document.getElementById('refresh').addEventListener('click', loadCompare);
