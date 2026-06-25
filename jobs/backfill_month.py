@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import time
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -21,4 +22,5 @@ if __name__ == "__main__":
             print(f"OK {trade_date.isoformat()} rows={count}")
         except Exception as exc:
             print(f"SKIP {trade_date.isoformat()} {exc}")
+        time.sleep(1)
     print(f"Backfill complete rows={total}")

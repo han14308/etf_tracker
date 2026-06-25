@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 from io import BytesIO
+import time
 
 import pandas as pd
 import requests
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
 
@@ -40,6 +43,10 @@ def download_time_holdings(idx: int, trade_date: date) -> pd.DataFrame:
 
 
 def download_kodex_holdings(fid: str, trade_date: date) -> pd.DataFrame:
+    json_frame = _download_kodex_holdings_json(fid, trade_date)
+    if not json_frame.empty:
+        return json_frame
+
     response = requests.get(
         "https://www.samsungfund.com/excel_pdf.do",
         params={"fId": fid, "gijunYMD": trade_date.strftime("%Y%m%d")},
@@ -48,3 +55,35 @@ def download_kodex_holdings(fid: str, trade_date: date) -> pd.DataFrame:
     )
     response.raise_for_status()
     return _read_excel(response.content)
+
+
+def _download_kodex_holdings_json(fid: str, trade_date: date) -> pd.DataFrame:
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    referer = "https://www.samsungfund.com/etf/product/library/pdf.do"
+    params = {"gijunYMD": trade_date.strftime("%Y.%m.%d")}
+
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = session.get(
+                f"https://www.samsungfund.com/api/v1/kodex/product-pdf/{fid}.do",
+                params=params,
+                headers={"Referer": referer},
+                timeout=30,
+            )
+            if response.status_code == 429:
+                time.sleep(2 + attempt * 3)
+                continue
+            response.raise_for_status()
+            payload = response.json()
+            pdf = payload.get("pdf") or {}
+            rows = pdf.get("list") or []
+            return pd.DataFrame(rows)
+        except Exception as exc:
+            last_error = exc
+            time.sleep(1 + attempt)
+
+    if last_error:
+        raise last_error
+    return pd.DataFrame()
