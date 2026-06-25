@@ -21,22 +21,34 @@ def collect_for_date(trade_date: date) -> int:
 
     errors = []
     try:
+        print(f"START {trade_date.isoformat()} TIME_KOSPI_ACTIVE download", flush=True)
         time_raw = download_time_holdings(TIME_KOSPI_ACTIVE_IDX, trade_date)
-        frames.append(normalize_holdings(time_raw, "TIME_KOSPI_ACTIVE", trade_date))
+        print(f"DONE {trade_date.isoformat()} TIME_KOSPI_ACTIVE download rows={len(time_raw)}", flush=True)
+        time_frame = normalize_holdings(time_raw, "TIME_KOSPI_ACTIVE", trade_date)
+        print(f"DONE {trade_date.isoformat()} TIME_KOSPI_ACTIVE normalize rows={len(time_frame)}", flush=True)
+        frames.append(time_frame)
     except Exception as exc:
         errors.append(f"TIME_KOSPI_ACTIVE: {exc}")
+        print(f"ERROR {trade_date.isoformat()} TIME_KOSPI_ACTIVE {exc}", flush=True)
 
     try:
+        print(f"START {trade_date.isoformat()} KODEX_200 download", flush=True)
         kodex_raw = download_kodex_holdings(KODEX_200_FID, trade_date)
-        frames.append(normalize_holdings(kodex_raw, "KODEX_200", trade_date))
+        print(f"DONE {trade_date.isoformat()} KODEX_200 download rows={len(kodex_raw)}", flush=True)
+        kodex_frame = normalize_holdings(kodex_raw, "KODEX_200", trade_date)
+        print(f"DONE {trade_date.isoformat()} KODEX_200 normalize rows={len(kodex_frame)}", flush=True)
+        frames.append(kodex_frame)
     except Exception as exc:
         errors.append(f"KODEX_200: {exc}")
+        print(f"ERROR {trade_date.isoformat()} KODEX_200 {exc}", flush=True)
 
     if not frames:
         raise RuntimeError("; ".join(errors))
 
     normalized = pd.concat(frames, ignore_index=True)
+    print(f"START {trade_date.isoformat()} database upsert rows={len(normalized)}", flush=True)
     count = upsert_holdings(normalized)
+    print(f"DONE {trade_date.isoformat()} database upsert rows={count}", flush=True)
     if errors:
         print(f"PARTIAL {trade_date.isoformat()} {'; '.join(errors)}")
     return count

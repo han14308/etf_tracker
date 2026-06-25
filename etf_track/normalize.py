@@ -27,6 +27,7 @@ def normalize_holdings(df: pd.DataFrame, etf_code: str, trade_date: date) -> pd.
     selected["ticker"] = selected["ticker"].map(_normalize_ticker)
     selected["name"] = selected["name"].astype(str).str.strip()
     selected = selected[selected["name"].ne("")]
+    selected.loc[selected["name"].map(_is_cash_name), "ticker"] = "CASH"
     selected["quantity"] = selected["quantity"].map(_clean_number)
     selected["market_value"] = selected["market_value"].map(_clean_number)
     selected["weight"] = selected["weight"].map(_clean_number)
@@ -40,11 +41,11 @@ def attach_isin(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     master = _load_security_master()
     if master.empty:
-        df["isin"] = df["ticker"].map(lambda x: "CASH_KRW" if x == "CASH" else None)
+        df["isin"] = df["ticker"].map(_auto_isin)
         return df
     df = df.merge(master[["ticker", "isin"]], on="ticker", how="left")
-    df.loc[df["ticker"].eq("CASH"), "isin"] = "CASH_KRW"
     df["isin"] = df["isin"].where(df["isin"].notna(), None)
+    df["isin"] = df.apply(lambda row: row["isin"] or _auto_isin(row["ticker"]), axis=1)
     return df
 
 
@@ -75,12 +76,40 @@ def _normalize_ticker(value: object) -> str:
     text = str(value).strip()
     if text in {"", "nan", "None"}:
         return "CASH"
-    if "현금" in text or "예금" in text:
+    if "현금" in text or "예금" in text or text.startswith("KRD"):
         return "CASH"
     text = text.split(".")[0].replace(",", "")
     if text.isdigit():
         return text.zfill(6)
     return text
+
+
+def _is_cash_name(value: object) -> bool:
+    if pd.isna(value):
+        return False
+    text = str(value)
+    return "현금" in text or "예금" in text or "원화" in text
+
+
+def _auto_isin(ticker: object) -> str | None:
+    ticker_text = _normalize_ticker(ticker)
+    if ticker_text == "CASH":
+        return "CASH_KRW"
+    if not ticker_text.isdigit() or len(ticker_text) != 6:
+        return None
+    body = f"KR7{ticker_text}00"
+    return body + str(_isin_check_digit(body))
+
+
+def _isin_check_digit(body: str) -> int:
+    expanded = "".join(str(ord(ch) - 55) if ch.isalpha() else ch for ch in body.upper())
+    total = 0
+    for idx, digit in enumerate(reversed(expanded)):
+        value = int(digit)
+        if idx % 2 == 0:
+            value *= 2
+        total += value // 10 + value % 10
+    return (10 - total % 10) % 10
 
 
 def _clean_number(value: object) -> float | None:

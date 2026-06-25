@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 from functools import lru_cache
+import hashlib
+import json
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Date, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
+from sqlalchemy import Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
@@ -28,6 +30,18 @@ holdings = Table(
     __import__("sqlalchemy").Column("quantity", Numeric(24, 6), nullable=True),
     __import__("sqlalchemy").Column("market_value", Numeric(24, 2), nullable=True),
     __import__("sqlalchemy").Column("weight", Numeric(12, 6), nullable=True),
+)
+
+krx_rows = Table(
+    "krx_rows",
+    metadata,
+    __import__("sqlalchemy").Column("trade_date", Date, primary_key=True),
+    __import__("sqlalchemy").Column("source", String(64), primary_key=True),
+    __import__("sqlalchemy").Column("row_hash", String(64), primary_key=True),
+    __import__("sqlalchemy").Column("ticker", String(32), nullable=True),
+    __import__("sqlalchemy").Column("isin", String(32), nullable=True),
+    __import__("sqlalchemy").Column("name", String(255), nullable=True),
+    __import__("sqlalchemy").Column("data", JSON, nullable=False),
 )
 
 
@@ -115,6 +129,49 @@ def upsert_holdings(df: pd.DataFrame) -> int:
             for trade_date, etf_code in keys:
                 conn.execute(delete(holdings).where(holdings.c.trade_date == trade_date, holdings.c.etf_code == etf_code))
             conn.execute(insert(holdings), rows)
+    return len(rows)
+
+
+def upsert_krx_rows(df: pd.DataFrame, trade_date: date, source: str = "KRX_PDF") -> int:
+    if df.empty:
+        return 0
+
+    init_db()
+    rows = []
+    for record in df.to_dict("records"):
+        clean_record = {_clean_text(k) or str(k): _json_value(v) for k, v in record.items()}
+        row_hash = hashlib.sha256(
+            json.dumps(clean_record, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        rows.append(
+            {
+                "trade_date": trade_date,
+                "source": source,
+                "row_hash": row_hash,
+                "ticker": _guess_field(clean_record, ["종목코드", "단축코드", "isuSrtCd", "ISU_SRT_CD", "ticker"]),
+                "isin": _guess_field(clean_record, ["ISIN", "표준코드", "isin", "ISU_CD"]),
+                "name": _guess_field(clean_record, ["종목명", "한글종목명", "isuKorNm", "ISU_NM", "name"]),
+                "data": clean_record,
+            }
+        )
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            stmt = pg_insert(krx_rows).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["trade_date", "source", "row_hash"],
+                set_={
+                    "ticker": stmt.excluded.ticker,
+                    "isin": stmt.excluded.isin,
+                    "name": stmt.excluded.name,
+                    "data": stmt.excluded.data,
+                },
+            )
+            conn.execute(stmt)
+        else:
+            conn.execute(delete(krx_rows).where(krx_rows.c.trade_date == trade_date, krx_rows.c.source == source))
+            conn.execute(insert(krx_rows), rows)
     return len(rows)
 
 
@@ -267,3 +324,63 @@ def fetch_security_history(
     for row in result:
         row["weight_diff"] = row["time_weight"] - row["kodex_weight"]
     return result
+
+
+def fetch_krx_dates(source: str = "KRX_PDF") -> list[date]:
+    init_db()
+    stmt = select(krx_rows.c.trade_date).where(krx_rows.c.source == source).distinct().order_by(krx_rows.c.trade_date.desc()).limit(90)
+    with get_engine().connect() as conn:
+        return list(conn.execute(stmt).scalars())
+
+
+def fetch_krx_rows(trade_date: date | None = None, source: str = "KRX_PDF", limit: int = 500) -> list[dict]:
+    init_db()
+    stmt = select(krx_rows).where(krx_rows.c.source == source).order_by(krx_rows.c.trade_date.desc()).limit(limit)
+    if trade_date:
+        stmt = stmt.where(krx_rows.c.trade_date == trade_date)
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
+
+
+def fetch_krx_summary(start: date | None = None, end: date | None = None, source: str = "KRX_PDF") -> list[dict]:
+    init_db()
+    stmt = (
+        select(
+            krx_rows.c.trade_date,
+            krx_rows.c.source,
+            func.count().label("row_count"),
+            func.count(krx_rows.c.ticker).label("ticker_count"),
+            func.count(krx_rows.c.isin).label("isin_count"),
+        )
+        .where(krx_rows.c.source == source)
+        .group_by(krx_rows.c.trade_date, krx_rows.c.source)
+        .order_by(krx_rows.c.trade_date.desc())
+    )
+    if start:
+        stmt = stmt.where(krx_rows.c.trade_date >= start)
+    if end:
+        stmt = stmt.where(krx_rows.c.trade_date <= end)
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
+
+
+def _json_value(value: Any) -> Any:
+    if pd.isna(value):
+        return None
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, date):
+        return value.isoformat()
+    if hasattr(value, "item"):
+        return value.item()
+    return value
+
+
+def _guess_field(record: dict[str, Any], candidates: list[str]) -> str | None:
+    normalized = {str(key).replace(" ", "").lower(): value for key, value in record.items()}
+    for candidate in candidates:
+        value = normalized.get(candidate.replace(" ", "").lower())
+        text = _clean_text(value)
+        if text:
+            return text
+    return None

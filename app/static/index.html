@@ -43,6 +43,14 @@
   <main>
     <div class="toolbar">
       <label>기준일 <select id="date"></select></label>
+      <label>보유 구분
+        <select id="holdingFilter">
+          <option value="all">전체</option>
+          <option value="common">공통 보유</option>
+          <option value="time_only">TIME만 보유</option>
+          <option value="kodex_only">KODEX만 보유</option>
+        </select>
+      </label>
       <button id="refresh">조회</button>
       <span id="status" class="muted"></span>
     </div>
@@ -129,12 +137,22 @@
       document.getElementById('kodexCount').textContent = data.filter(x => x.kodex_weight > 0).length;
       const overlap = common.reduce((s, x) => s + Math.min(x.time_weight, x.kodex_weight), 0);
       document.getElementById('overlap').textContent = fmtPct(overlap);
-      renderRows(data);
-      document.getElementById('status').textContent = `${data.length}개 종목`;
+      renderRows();
     }
 
-    function renderRows(data) {
-      const sorted = [...data].sort((a, b) => Math.abs(b.weight_diff) - Math.abs(a.weight_diff));
+    function filteredRows() {
+      const filter = document.getElementById('holdingFilter').value;
+      return state.rows.filter(x => {
+        if (filter === 'common') return x.time_weight > 0 && x.kodex_weight > 0;
+        if (filter === 'time_only') return x.time_weight > 0 && x.kodex_weight <= 0;
+        if (filter === 'kodex_only') return x.kodex_weight > 0 && x.time_weight <= 0;
+        return true;
+      });
+    }
+
+    function renderRows() {
+      const data = filteredRows();
+      const sorted = [...data].sort((a, b) => Math.max(b.time_weight || 0, b.kodex_weight || 0) - Math.max(a.time_weight || 0, a.kodex_weight || 0));
       state.sortedRows = sorted;
       const rows = sorted
         .map((x, i) => `
@@ -155,6 +173,7 @@
       document.querySelectorAll('#rows tr[data-index]').forEach(row => {
         row.addEventListener('click', () => showHistory(state.sortedRows[row.dataset.index]));
       });
+      document.getElementById('status').textContent = `${sorted.length}개 종목`;
     }
 
     async function showHistory(row) {
@@ -256,6 +275,7 @@
     }
 
     document.getElementById('refresh').addEventListener('click', loadCompare);
+    document.getElementById('holdingFilter').addEventListener('change', renderRows);
     document.getElementById('metric').addEventListener('change', () => drawChart(state.historyData || []));
     loadDates().then(loadCompare);
   </script>

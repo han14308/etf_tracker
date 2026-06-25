@@ -39,6 +39,45 @@ Render cron expression:
 30 9 * * MON-FRI
 ```
 
+## KRX PDF Data
+
+KRX menu `MDC0201030108` requires a logged-in session. Store credentials only in environment variables or deployment secrets:
+
+```bash
+KRX_USERNAME=your_id
+KRX_PASSWORD=your_password
+KRX_MENU_ID=MDC0201030108
+KRX_STAT_URL=dbms/MDC/STAT/standard/MDCSTAT13108
+KRX_EXTRA_PARAMS={}
+```
+
+Backfill the recent month:
+
+```bash
+python jobs/backfill_krx_month.py
+```
+
+Collect one day:
+
+```bash
+python jobs/collect_krx.py
+```
+
+KRX rows are stored separately in `krx_rows` as raw JSON so the original columns are preserved. Check the API with:
+
+```text
+/api/krx/dates
+/api/krx/summary
+/api/krx/rows?trade_date=2026-06-25
+```
+
+On Render, trigger a background KRX backfill with:
+
+```text
+/api/admin/krx/backfill?token=YOUR_BACKFILL_TOKEN&days=31
+/api/admin/krx/backfill/status?token=YOUR_BACKFILL_TOKEN
+```
+
 ## ISIN Mapping
 
 Edit `data/security_master.csv`.
