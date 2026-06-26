@@ -11,7 +11,7 @@
     h1 { margin: 0 0 8px; font-size: 28px; }
     .muted { color: #667085; }
     .toolbar { display: flex; gap: 12px; align-items: center; margin: 24px 0; flex-wrap: wrap; }
-    select, button { height: 36px; padding: 0 12px; border: 1px solid #cfd4dc; background: #fff; }
+    select, input, button { height: 36px; padding: 0 12px; border: 1px solid #cfd4dc; background: #fff; }
     button { cursor: pointer; background: #1f6feb; color: #fff; border-color: #1f6feb; }
     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     .card { background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
@@ -42,7 +42,9 @@
   </header>
   <main>
     <div class="toolbar">
-      <label>기준일 <select id="date"></select></label>
+      <label>기준일 <input id="dateInput" type="date" list="dateOptions" /></label>
+      <datalist id="dateOptions"></datalist>
+      <label>빠른 선택 <select id="date"></select></label>
       <label>보유 구분
         <select id="holdingFilter">
           <option value="all">전체</option>
@@ -114,6 +116,10 @@
       const dates = await fetch('/api/dates').then(r => r.json());
       const select = document.getElementById('date');
       select.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+      const input = document.getElementById('dateInput');
+      const options = document.getElementById('dateOptions');
+      options.innerHTML = dates.map(d => `<option value="${d}"></option>`).join('');
+      if (dates.length) input.value = dates[0];
     }
 
     function fmtPct(v) {
@@ -126,7 +132,7 @@
     }
 
     async function loadCompare() {
-      const date = document.getElementById('date').value;
+      const date = document.getElementById('dateInput').value || document.getElementById('date').value;
       if (!date) return;
       document.getElementById('status').textContent = '조회 중...';
       const data = await fetch(`/api/compare?trade_date=${date}`).then(r => r.json());
@@ -275,6 +281,11 @@
     }
 
     document.getElementById('refresh').addEventListener('click', loadCompare);
+    document.getElementById('date').addEventListener('change', event => {
+      document.getElementById('dateInput').value = event.target.value;
+      loadCompare();
+    });
+    document.getElementById('dateInput').addEventListener('change', loadCompare);
     document.getElementById('holdingFilter').addEventListener('change', renderRows);
     document.getElementById('metric').addEventListener('change', () => drawChart(state.historyData || []));
     loadDates().then(loadCompare);
