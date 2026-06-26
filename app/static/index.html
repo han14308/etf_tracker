@@ -21,7 +21,7 @@
     .table-wrap { overflow: auto; border: 1px solid #e6e8eb; background: #fff; }
     table { min-width: 1180px; width: 100%; border-collapse: collapse; }
     th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 13px; white-space: nowrap; }
-    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
     th { background: #f2f4f7; color: #344054; position: sticky; top: 0; }
     tbody tr { cursor: pointer; }
     tbody tr:hover { background: #f8fbff; }
@@ -93,7 +93,6 @@
       <table>
         <thead>
           <tr>
-            <th>ISIN</th>
             <th>종목코드</th>
             <th>종목명</th>
             <th>TIME 수량</th>
@@ -179,7 +178,6 @@
       const rows = sorted
         .map((x, i) => `
           <tr data-index="${i}">
-            <td>${x.isin || ''}</td>
             <td>${x.ticker || ''}</td>
             <td>${x.name || ''}</td>
             <td>${fmtNum(x.time_quantity, 2)}</td>
@@ -191,7 +189,7 @@
             <td>${fmtPct(x.weight_diff)}</td>
           </tr>`)
         .join('');
-      document.getElementById('rows').innerHTML = rows || '<tr><td colspan="10">데이터가 없습니다.</td></tr>';
+      document.getElementById('rows').innerHTML = rows || '<tr><td colspan="9">데이터가 없습니다.</td></tr>';
       document.querySelectorAll('#rows tr[data-index]').forEach(row => {
         row.addEventListener('click', () => showHistory(state.sortedRows[row.dataset.index]));
       });
@@ -203,7 +201,7 @@
       const data = await fetch(`/api/security-history?${qs}`).then(r => r.json());
       state.historyData = data;
       document.getElementById('historyTitle').textContent = `${row.name || row.ticker} 한 달 추이`;
-      document.getElementById('historySub').textContent = `${row.ticker || ''} ${row.isin || ''}`;
+      document.getElementById('historySub').textContent = `${row.ticker || ''}`;
       drawChart(data);
     }
 
