@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 import requests
 
-from etf_track.config import KRX_EXTRA_PARAMS, KRX_MENU_ID, KRX_PASSWORD, KRX_STAT_URL, KRX_USERNAME
+from etf_track.config import KRX_COOKIE, KRX_EXTRA_PARAMS, KRX_MENU_ID, KRX_PASSWORD, KRX_STAT_URL, KRX_USERNAME
 
 BASE_URL = "https://data.krx.co.kr"
 HEADERS = {
@@ -34,11 +34,15 @@ def download_krx_pdf_rows(trade_date: date) -> pd.DataFrame:
 
 
 def _login() -> requests.Session:
-    if not KRX_USERNAME or not KRX_PASSWORD:
-        raise RuntimeError("KRX_USERNAME and KRX_PASSWORD environment variables are required")
-
     session = requests.Session()
     session.headers.update(HEADERS)
+    if KRX_COOKIE:
+        session.headers.update({"Cookie": KRX_COOKIE})
+        return session
+
+    if not KRX_USERNAME or not KRX_PASSWORD:
+        raise RuntimeError("Set KRX_COOKIE, or set both KRX_USERNAME and KRX_PASSWORD")
+
     session.get(
         f"{BASE_URL}/contents/MDC/COMS/client/MDCCOMS001.cmd",
         params={"locale": "ko_KR", "redirectURL": f"/contents/MDC/MDI/mdiLoader/index.cmd?menuId={KRX_MENU_ID}"},
@@ -58,7 +62,7 @@ def _login() -> requests.Session:
     response.raise_for_status()
     text = response.text.strip()
     if "LOGOUT" in text or "ERROR" in text or "CD" in text[:80]:
-        raise RuntimeError(f"KRX login failed: {text[:120]}")
+        raise RuntimeError(f"KRX login failed. Use a fresh KRX_COOKIE from a browser login. Response: {text[:120]}")
     return session
 
 
@@ -101,7 +105,7 @@ def _read_download(content: bytes) -> pd.DataFrame:
     else:
         text = content.decode("utf-8", errors="replace")
 
-    if "로그인" in text and "필요" in text:
+    if ("로그인" in text and "필요" in text) or "LOGOUT" in text:
         raise RuntimeError("KRX download requires a valid login session")
     return pd.read_csv(StringIO(text))
 

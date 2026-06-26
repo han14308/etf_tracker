@@ -46,10 +46,13 @@ KRX menu `MDC0201030108` requires a logged-in session. Store credentials only in
 ```bash
 KRX_USERNAME=your_id
 KRX_PASSWORD=your_password
+KRX_COOKIE=
 KRX_MENU_ID=MDC0201030108
 KRX_STAT_URL=dbms/MDC/STAT/standard/MDCSTAT13108
 KRX_EXTRA_PARAMS={}
 ```
+
+If the direct KRX login fails because of browser security scripts, log in to KRX in a browser and copy the fresh `Cookie` request header for `data.krx.co.kr` into `KRX_COOKIE`. When `KRX_COOKIE` is set, the collector skips username/password login and uses that browser session.
 
 Backfill the recent month:
 
