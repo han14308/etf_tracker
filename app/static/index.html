@@ -16,6 +16,7 @@
     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     .card { background: #fff; border: 1px solid #e6e8eb; border-radius: 8px; padding: 16px; }
     .metric { font-size: 26px; font-weight: 700; margin-top: 8px; }
+    .metric-sub { margin-top: 6px; font-size: 13px; color: #667085; }
     .section-title { margin: 28px 0 12px; font-size: 18px; }
     .table-wrap { overflow: auto; border: 1px solid #e6e8eb; background: #fff; }
     table { min-width: 1180px; width: 100%; border-collapse: collapse; }
@@ -59,8 +60,8 @@
 
     <div class="grid">
       <div class="card"><div class="muted">공통 종목 수</div><div id="commonCount" class="metric">-</div></div>
-      <div class="card"><div class="muted">TIME 종목 수</div><div id="timeCount" class="metric">-</div></div>
-      <div class="card"><div class="muted">KODEX 종목 수</div><div id="kodexCount" class="metric">-</div></div>
+      <div class="card"><div class="muted">TIME 종목 수</div><div id="timeCount" class="metric">-</div><div id="timeTotalValue" class="metric-sub">총 평가금액 -</div></div>
+      <div class="card"><div class="muted">KODEX 종목 수</div><div id="kodexCount" class="metric">-</div><div id="kodexTotalValue" class="metric-sub">총 평가금액 -</div></div>
       <div class="card"><div class="muted">공통 최소비중 합</div><div id="overlap" class="metric">-</div></div>
     </div>
 
@@ -139,8 +140,12 @@
       state.rows = data;
       const common = data.filter(x => x.time_weight > 0 && x.kodex_weight > 0);
       document.getElementById('commonCount').textContent = common.length;
-      document.getElementById('timeCount').textContent = data.filter(x => x.time_weight > 0).length;
-      document.getElementById('kodexCount').textContent = data.filter(x => x.kodex_weight > 0).length;
+      const timeRows = data.filter(x => x.time_weight > 0);
+      const kodexRows = data.filter(x => x.kodex_weight > 0);
+      document.getElementById('timeCount').textContent = timeRows.length;
+      document.getElementById('kodexCount').textContent = kodexRows.length;
+      document.getElementById('timeTotalValue').textContent = `총 평가금액 ${fmtWon(sumBy(timeRows, 'time_market_value'))}`;
+      document.getElementById('kodexTotalValue').textContent = `총 평가금액 ${fmtWon(sumBy(kodexRows, 'kodex_market_value'))}`;
       const overlap = common.reduce((s, x) => s + Math.min(x.time_weight, x.kodex_weight), 0);
       document.getElementById('overlap').textContent = fmtPct(overlap);
       renderRows();
@@ -154,6 +159,17 @@
         if (filter === 'kodex_only') return x.kodex_weight > 0 && x.time_weight <= 0;
         return true;
       });
+    }
+
+    function sumBy(rows, key) {
+      return rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+    }
+
+    function fmtWon(value) {
+      const number = Number(value || 0);
+      if (Math.abs(number) >= 1000000000000) return (number / 1000000000000).toFixed(2) + '조';
+      if (Math.abs(number) >= 100000000) return (number / 100000000).toFixed(1) + '억';
+      return number.toLocaleString('ko-KR') + '원';
     }
 
     function renderRows() {
