@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Boolean, Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
+from sqlalchemy import Boolean, Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
@@ -298,7 +298,9 @@ def fetch_holding_history(
         return []
 
     stmt = select(holdings).where(holdings.c.etf_code == etf_code)
-    if isin:
+    if isin and ticker:
+        stmt = stmt.where(or_(holdings.c.isin == isin, holdings.c.ticker == ticker))
+    elif isin:
         stmt = stmt.where(holdings.c.isin == isin)
     else:
         stmt = stmt.where(holdings.c.ticker == ticker)

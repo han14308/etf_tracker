@@ -299,7 +299,7 @@
           name: row.name,
           checked: true,
           color: colors[state.selected.size % colors.length],
-          history: [],
+          histories: {},
         };
         state.selected.set(key, item);
         renderSelected();
@@ -316,8 +316,8 @@
     async function loadHistory(item) {
       const params = new URLSearchParams({ etf_code: state.selectedEtf });
       if (item.isin) params.set('isin', item.isin);
-      else params.set('ticker', item.ticker || '');
-      item.history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      if (item.ticker) params.set('ticker', item.ticker);
+      item.histories[state.selectedEtf] = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
       renderSelected();
       drawChart();
     }
@@ -332,6 +332,10 @@
       drawChart();
     }
 
+    function currentHistory(item) {
+      return item.histories?.[state.selectedEtf] || [];
+    }
+
     function renderSelected() {
       const items = [...state.selected.values()];
       const list = document.getElementById('selectedList');
@@ -344,7 +348,7 @@
           <input type="checkbox" data-action="toggle" data-key="${escapeHtml(item.key)}" ${item.checked ? 'checked' : ''} />
           <div>
             <div class="selected-name" style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</div>
-            <div class="selected-meta">${escapeHtml(item.ticker || '')} · ${fmtNum(item.history.length)}일</div>
+            <div class="selected-meta">${escapeHtml(item.ticker || '')} · ${fmtNum(currentHistory(item).length)}일</div>
           </div>
           <button class="remove" data-action="remove" data-key="${escapeHtml(item.key)}">삭제</button>
         </div>
@@ -379,7 +383,9 @@
       ctx.clearRect(0, 0, width, height);
 
       const metric = document.getElementById('chartMetric').value;
-      const series = [...state.selected.values()].filter(item => item.checked && item.history.length);
+      const series = [...state.selected.values()]
+        .map(item => ({ ...item, history: currentHistory(item) }))
+        .filter(item => item.checked && item.history.length);
       if (!series.length) {
         ctx.fillStyle = '#667085';
         ctx.fillText('체크된 종목의 히스토리가 없습니다.', 24, 34);
