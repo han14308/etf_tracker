@@ -294,6 +294,8 @@ def fetch_summary(start: date | None = None, end: date | None = None) -> list[di
             holdings.c.etf_code,
             func.count().label("holding_count"),
             func.sum(holdings.c.weight).label("total_weight"),
+            func.sum(holdings.c.market_value).label("total_market_value"),
+            func.sum(holdings.c.quantity).label("total_quantity"),
         )
         .group_by(holdings.c.trade_date, holdings.c.etf_code)
         .order_by(holdings.c.trade_date.desc(), holdings.c.etf_code)
