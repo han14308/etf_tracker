@@ -286,6 +286,28 @@ def fetch_holdings(trade_date: date | None = None, etf_code: str | None = None) 
         return [_row_to_dict(row) for row in conn.execute(stmt)]
 
 
+def fetch_holding_history(
+    etf_code: str,
+    ticker: str | None = None,
+    isin: str | None = None,
+) -> list[dict]:
+    init_db()
+    ticker = _clean_text(ticker)
+    isin = _clean_text(isin)
+    if not etf_code or (not ticker and not isin):
+        return []
+
+    stmt = select(holdings).where(holdings.c.etf_code == etf_code)
+    if isin:
+        stmt = stmt.where(holdings.c.isin == isin)
+    else:
+        stmt = stmt.where(holdings.c.ticker == ticker)
+    stmt = stmt.order_by(holdings.c.trade_date.asc())
+
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
+
+
 def fetch_summary(start: date | None = None, end: date | None = None) -> list[dict]:
     init_db()
     stmt = (

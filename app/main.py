@@ -14,6 +14,7 @@ from etf_track.db import (
     fetch_compare,
     fetch_dates,
     fetch_exposure,
+    fetch_holding_history,
     fetch_holdings,
     fetch_krx_dates,
     fetch_krx_rows,
@@ -62,6 +63,15 @@ def holdings(
     etf_code: str | None = Query(default=None),
 ) -> list[dict]:
     return fetch_holdings(trade_date=trade_date, etf_code=etf_code)
+
+
+@app.get("/api/holding-history")
+def holding_history(
+    etf_code: str = Query(default=""),
+    ticker: str | None = Query(default=None),
+    isin: str | None = Query(default=None),
+) -> list[dict]:
+    return fetch_holding_history(etf_code=etf_code, ticker=ticker, isin=isin)
 
 
 @app.get("/api/products")
