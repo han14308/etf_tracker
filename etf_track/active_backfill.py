@@ -56,13 +56,20 @@ def _add_message(message: str) -> None:
 def _run_active_backfill(days: int) -> None:
     total = 0
     try:
+        _add_message("Discovering active ETF products")
         products = list_all_active_etfs()
         upsert_products([product.to_dict() for product in products])
         _add_message(f"ACTIVE_PRODUCTS count={len(products)}")
+        if not products:
+            _add_message("No active ETF products found")
+            return
         for trade_date in recent_weekdays(days):
             try:
+                _add_message(f"START_DATE {trade_date.isoformat()}")
                 count = collect_active_for_date(trade_date, products=products)
                 total += count
+                with _lock:
+                    _status["total_rows"] = total
                 _add_message(f"OK {trade_date.isoformat()} rows={count}")
             except Exception as exc:
                 _add_message(f"SKIP {trade_date.isoformat()} {exc}")
