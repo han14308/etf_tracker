@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+from etf_track.active_backfill import get_active_backfill_status, start_active_backfill
 from etf_track.backfill import get_backfill_status, start_backfill
 from etf_track.config import BACKFILL_TOKEN
 from etf_track.krx_backfill import get_krx_backfill_status, start_krx_backfill
@@ -17,6 +18,7 @@ from etf_track.db import (
     fetch_krx_dates,
     fetch_krx_rows,
     fetch_krx_summary,
+    fetch_products,
     fetch_security_history,
     fetch_summary,
     init_db,
@@ -54,6 +56,11 @@ def holdings(
     etf_code: str | None = Query(default=None),
 ) -> list[dict]:
     return fetch_holdings(trade_date=trade_date, etf_code=etf_code)
+
+
+@app.get("/api/products")
+def products(active_only: bool = Query(default=True)) -> list[dict]:
+    return fetch_products(active_only=active_only)
 
 
 @app.get("/api/compare")
@@ -144,3 +151,23 @@ def krx_backfill_status(token: str = Query(default="")) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
     return get_krx_backfill_status()
+
+
+@app.post("/api/admin/active/backfill")
+@app.get("/api/admin/active/backfill")
+def trigger_active_backfill(
+    token: str = Query(default=""),
+    days: int = Query(default=31, ge=1, le=31),
+) -> dict:
+    if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid backfill token")
+    started = start_active_backfill(days)
+    status = get_active_backfill_status()
+    return {"started": started, "status": status}
+
+
+@app.get("/api/admin/active/backfill/status")
+def active_backfill_status(token: str = Query(default="")) -> dict:
+    if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid backfill token")
+    return get_active_backfill_status()

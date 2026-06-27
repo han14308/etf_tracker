@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
+from sqlalchemy import Boolean, Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
@@ -42,6 +42,18 @@ krx_rows = Table(
     __import__("sqlalchemy").Column("isin", String(32), nullable=True),
     __import__("sqlalchemy").Column("name", String(255), nullable=True),
     __import__("sqlalchemy").Column("data", JSON, nullable=False),
+)
+
+etf_products = Table(
+    "etf_products",
+    metadata,
+    __import__("sqlalchemy").Column("etf_code", String(64), primary_key=True),
+    __import__("sqlalchemy").Column("issuer", String(32), nullable=False),
+    __import__("sqlalchemy").Column("source_id", String(64), nullable=False),
+    __import__("sqlalchemy").Column("name", String(255), nullable=False),
+    __import__("sqlalchemy").Column("ticker", String(32), nullable=True),
+    __import__("sqlalchemy").Column("is_active", Boolean, nullable=False, default=True),
+    __import__("sqlalchemy").Column("data", JSON, nullable=True),
 )
 
 
@@ -173,6 +185,57 @@ def upsert_krx_rows(df: pd.DataFrame, trade_date: date, source: str = "KRX_PDF")
             conn.execute(delete(krx_rows).where(krx_rows.c.trade_date == trade_date, krx_rows.c.source == source))
             conn.execute(insert(krx_rows), rows)
     return len(rows)
+
+
+def upsert_products(products: list[dict[str, Any]]) -> int:
+    if not products:
+        return 0
+
+    init_db()
+    rows = []
+    for product in products:
+        rows.append(
+            {
+                "etf_code": str(product["etf_code"]),
+                "issuer": str(product["issuer"]),
+                "source_id": str(product["source_id"]),
+                "name": str(product["name"]),
+                "ticker": _clean_text(product.get("ticker")),
+                "is_active": bool(product.get("is_active", True)),
+                "data": product.get("data") or {},
+            }
+        )
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            stmt = pg_insert(etf_products).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["etf_code"],
+                set_={
+                    "issuer": stmt.excluded.issuer,
+                    "source_id": stmt.excluded.source_id,
+                    "name": stmt.excluded.name,
+                    "ticker": stmt.excluded.ticker,
+                    "is_active": stmt.excluded.is_active,
+                    "data": stmt.excluded.data,
+                },
+            )
+            conn.execute(stmt)
+        else:
+            for row in rows:
+                conn.execute(delete(etf_products).where(etf_products.c.etf_code == row["etf_code"]))
+            conn.execute(insert(etf_products), rows)
+    return len(rows)
+
+
+def fetch_products(active_only: bool = True) -> list[dict]:
+    init_db()
+    stmt = select(etf_products).order_by(etf_products.c.issuer, etf_products.c.name)
+    if active_only:
+        stmt = stmt.where(etf_products.c.is_active.is_(True))
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
 
 
 def fetch_dates() -> list[date]:

@@ -31,6 +31,18 @@ Run this after market close:
 python jobs/collect_holdings.py
 ```
 
+To collect every active ETF from TIME and KODEX:
+
+```bash
+python jobs/collect_active_etfs.py
+```
+
+To backfill the recent month for every active ETF from TIME and KODEX:
+
+```bash
+python jobs/backfill_active_etfs_month.py
+```
+
 Korea market close plus data publication delay is safer around `18:30 KST`, which is `09:30 UTC`.
 
 Render cron expression:
@@ -79,6 +91,26 @@ On Render, trigger a background KRX backfill with:
 ```text
 /api/admin/krx/backfill?token=YOUR_BACKFILL_TOKEN&days=31
 /api/admin/krx/backfill/status?token=YOUR_BACKFILL_TOKEN
+```
+
+## Active ETF Backfill
+
+The app discovers active ETFs from:
+
+- `https://timeetf.co.kr/m31.php`
+- `https://www.samsungfund.com/etf/product/library/pdf.do`
+
+On Render, trigger a background active ETF backfill with:
+
+```text
+/api/admin/active/backfill?token=YOUR_BACKFILL_TOKEN&days=31
+/api/admin/active/backfill/status?token=YOUR_BACKFILL_TOKEN
+```
+
+Check discovered products with:
+
+```text
+/api/products
 ```
 
 ## ISIN Mapping
