@@ -113,6 +113,20 @@ Check discovered products with:
 /api/products
 ```
 
+To make Render collect automatically when the web service starts, use this Start Command:
+
+```bash
+python jobs/start_web.py
+```
+
+Set this environment variable to control how many weekdays are collected on startup:
+
+```text
+ACTIVE_BACKFILL_ON_START_DAYS=31
+```
+
+Set it to `0` if you want to start the server without automatic collection.
+
 ## ISIN Mapping
 
 Edit `data/security_master.csv`.

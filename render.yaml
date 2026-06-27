@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python jobs/start_web.py
     envVars:
       - key: DATABASE_URL
         sync: false
@@ -12,6 +12,8 @@ services:
         value: "11"
       - key: KODEX_200_FID
         value: "2ETF01"
+      - key: ACTIVE_BACKFILL_ON_START_DAYS
+        value: "31"
 
   - type: cron
     name: etf-track-daily-collector
@@ -19,7 +21,7 @@ services:
     plan: starter
     schedule: "30 9 * * MON-FRI"
     buildCommand: pip install -r requirements.txt
-    startCommand: python jobs/collect_holdings.py
+    startCommand: python jobs/collect_active_etfs.py
     envVars:
       - key: DATABASE_URL
         sync: false
