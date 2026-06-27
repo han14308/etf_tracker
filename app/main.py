@@ -12,6 +12,7 @@ from etf_track.krx_backfill import get_krx_backfill_status, start_krx_backfill
 from etf_track.db import (
     fetch_compare,
     fetch_dates,
+    fetch_exposure,
     fetch_holdings,
     fetch_krx_dates,
     fetch_krx_rows,
@@ -62,6 +63,16 @@ def compare(
     right: str = Query(default="KODEX_200"),
 ) -> list[dict]:
     return fetch_compare(trade_date=trade_date, left=left, right=right)
+
+
+@app.get("/api/exposure")
+def exposure(
+    trade_date: date | None = Query(default=None),
+    group_by: str = Query(default="sector"),
+    left: str = Query(default="TIME_KOSPI_ACTIVE"),
+    right: str = Query(default="KODEX_200"),
+) -> list[dict]:
+    return fetch_exposure(trade_date=trade_date, group_by=group_by, left=left, right=right)
 
 
 @app.get("/api/security-history")

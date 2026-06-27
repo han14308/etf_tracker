@@ -94,3 +94,20 @@ ticker,name,isin
 ```
 
 Unknown tickers are stored with `isin = null`. Cash rows are stored as `CASH_KRW`.
+
+## Sector Exposure
+
+Edit `data/security_sectors.csv` to classify holdings by market and sector:
+
+```text
+ticker,isin,name,market,sector
+005930,KR7005930003,삼성전자,KOSPI,기술주
+000660,KR7000660001,SK하이닉스,KOSPI,기술주
+```
+
+The dashboard shows market/sector exposure from:
+
+```text
+/api/exposure?trade_date=2026-06-25&group_by=sector
+/api/exposure?trade_date=2026-06-25&group_by=market
+```

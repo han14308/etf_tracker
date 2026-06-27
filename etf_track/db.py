@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
 
-from etf_track.config import DATABASE_URL
+from etf_track.config import DATABASE_URL, SECURITY_SECTOR_PATH
 
 metadata = MetaData()
 
@@ -271,6 +271,56 @@ def fetch_compare(trade_date: date | None = None, left: str = "TIME_KOSPI_ACTIVE
     return result
 
 
+def fetch_exposure(
+    trade_date: date | None = None,
+    group_by: str = "sector",
+    left: str = "TIME_KOSPI_ACTIVE",
+    right: str = "KODEX_200",
+) -> list[dict]:
+    if group_by not in {"sector", "market"}:
+        group_by = "sector"
+
+    rows = fetch_compare(trade_date=trade_date, left=left, right=right)
+    if not rows:
+        return []
+
+    sector_master = _load_sector_master()
+    by_group: dict[str, dict] = {}
+    for row in rows:
+        meta = _find_security_meta(sector_master, row.get("ticker"), row.get("isin"))
+        group = meta.get(group_by) or "미분류"
+        bucket = by_group.setdefault(
+            group,
+            {
+                "group": group,
+                "time_weight": 0.0,
+                "kodex_weight": 0.0,
+                "time_market_value": 0.0,
+                "kodex_market_value": 0.0,
+                "time_count": 0,
+                "kodex_count": 0,
+                "common_count": 0,
+            },
+        )
+        time_weight = float(row.get("time_weight") or 0)
+        kodex_weight = float(row.get("kodex_weight") or 0)
+        bucket["time_weight"] += time_weight
+        bucket["kodex_weight"] += kodex_weight
+        bucket["time_market_value"] += float(row.get("time_market_value") or 0)
+        bucket["kodex_market_value"] += float(row.get("kodex_market_value") or 0)
+        if time_weight > 0:
+            bucket["time_count"] += 1
+        if kodex_weight > 0:
+            bucket["kodex_count"] += 1
+        if time_weight > 0 and kodex_weight > 0:
+            bucket["common_count"] += 1
+
+    result = list(by_group.values())
+    for row in result:
+        row["weight_diff"] = row["time_weight"] - row["kodex_weight"]
+    return sorted(result, key=lambda row: max(row["time_weight"], row["kodex_weight"]), reverse=True)
+
+
 def fetch_security_history(
     ticker: str | None = None,
     isin: str | None = None,
@@ -384,3 +434,37 @@ def _guess_field(record: dict[str, Any], candidates: list[str]) -> str | None:
         if text:
             return text
     return None
+
+
+@lru_cache(maxsize=1)
+def _load_sector_master() -> dict[str, dict[str, str]]:
+    if not SECURITY_SECTOR_PATH.exists():
+        return {}
+    frame = pd.read_csv(SECURITY_SECTOR_PATH, dtype=str).fillna("")
+    frame.columns = [str(col).strip().lower() for col in frame.columns]
+    result: dict[str, dict[str, str]] = {}
+    for record in frame.to_dict("records"):
+        ticker = _clean_text(record.get("ticker"))
+        isin = _clean_text(record.get("isin"))
+        meta = {
+            "ticker": ticker or "",
+            "isin": isin or "",
+            "name": _clean_text(record.get("name")) or "",
+            "market": _clean_text(record.get("market")) or "",
+            "sector": _clean_text(record.get("sector")) or "",
+        }
+        if ticker:
+            result[f"ticker:{ticker}"] = meta
+        if isin:
+            result[f"isin:{isin}"] = meta
+    return result
+
+
+def _find_security_meta(master: dict[str, dict[str, str]], ticker: Any, isin: Any) -> dict[str, str]:
+    isin_text = _clean_text(isin)
+    ticker_text = _clean_text(ticker)
+    if isin_text and f"isin:{isin_text}" in master:
+        return master[f"isin:{isin_text}"]
+    if ticker_text and f"ticker:{ticker_text}" in master:
+        return master[f"ticker:{ticker_text}"]
+    return {}
