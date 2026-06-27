@@ -195,9 +195,6 @@
       if (!state.selectedEtf || !summaries.some(row => row.etf_code === state.selectedEtf)) {
         state.selectedEtf = preferredEtf(summaries);
       }
-      state.selected.clear();
-      renderSelected();
-      drawChart();
       renderTabs();
       await loadHoldings();
     }
@@ -225,11 +222,9 @@
       document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', async () => {
           state.selectedEtf = tab.dataset.etf;
-          state.selected.clear();
-          renderSelected();
-          drawChart();
           renderTabs();
           await loadHoldings();
+          await reloadSelectedHistories();
         });
       });
     }
@@ -324,6 +319,16 @@
       else params.set('ticker', item.ticker || '');
       item.history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
       renderSelected();
+      drawChart();
+    }
+
+    async function reloadSelectedHistories() {
+      const items = [...state.selected.values()];
+      for (const item of items) {
+        await loadHistory(item);
+      }
+      renderSelected();
+      renderRows();
       drawChart();
     }
 
