@@ -101,25 +101,44 @@ def _clean_text(value: Any) -> str | None:
     return text
 
 
+def _sum_decimal(left: Decimal | None, right: Decimal | None) -> Decimal | None:
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return left + right
+
+
 def upsert_holdings(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
 
     init_db()
-    rows = []
+    by_key: dict[tuple[Any, str, str], dict[str, Any]] = {}
     for record in df.to_dict("records"):
-        rows.append(
-            {
-                "trade_date": record["trade_date"],
-                "etf_code": record["etf_code"],
-                "ticker": str(record["ticker"]),
-                "isin": _clean_text(record.get("isin")),
-                "name": str(record["name"]),
-                "quantity": _clean_number(record.get("quantity")),
-                "market_value": _clean_number(record.get("market_value")),
-                "weight": _clean_number(record.get("weight")),
-            }
-        )
+        row = {
+            "trade_date": record["trade_date"],
+            "etf_code": record["etf_code"],
+            "ticker": str(record["ticker"]),
+            "isin": _clean_text(record.get("isin")),
+            "name": str(record["name"]),
+            "quantity": _clean_number(record.get("quantity")),
+            "market_value": _clean_number(record.get("market_value")),
+            "weight": _clean_number(record.get("weight")),
+        }
+        key = (row["trade_date"], row["etf_code"], row["ticker"])
+        if key in by_key:
+            existing = by_key[key]
+            existing["quantity"] = _sum_decimal(existing["quantity"], row["quantity"])
+            existing["market_value"] = _sum_decimal(existing["market_value"], row["market_value"])
+            existing["weight"] = _sum_decimal(existing["weight"], row["weight"])
+            if row["isin"]:
+                existing["isin"] = row["isin"]
+            if row["name"] and row["name"] not in existing["name"].split(" / "):
+                existing["name"] = f'{existing["name"]} / {row["name"]}'
+        else:
+            by_key[key] = row
+    rows = list(by_key.values())
 
     engine = get_engine()
     with engine.begin() as conn:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from html import unescape
 import re
+import time
 
 import requests
 
@@ -58,7 +59,8 @@ def list_kodex_active_etfs() -> list[EtfProduct]:
     page = 1
     total_count: int | None = None
     while True:
-        response = session.get(
+        response = _get_with_retry(
+            session,
             "https://www.samsungfund.com/api/v1/kodex/product.do",
             params={
                 "ordrColm": "YIELD_WEEK",
@@ -68,9 +70,7 @@ def list_kodex_active_etfs() -> list[EtfProduct]:
                 "srchTerm": "w",
                 "srchVal": "액티브",
             },
-            timeout=30,
         )
-        response.raise_for_status()
         rows = response.json()
         if not rows:
             break
@@ -107,7 +107,13 @@ def list_kodex_active_etfs() -> list[EtfProduct]:
 
 
 def list_all_active_etfs() -> list[EtfProduct]:
-    return [*list_time_active_etfs(), *list_kodex_active_etfs()]
+    products: list[EtfProduct] = []
+    for issuer, loader in (("TIME", list_time_active_etfs), ("KODEX", list_kodex_active_etfs)):
+        try:
+            products.extend(loader())
+        except Exception as exc:
+            print(f"ACTIVE_PRODUCT_DISCOVERY_SKIP issuer={issuer} error={exc}", flush=True)
+    return products
 
 
 def _strip_tags(value: str) -> str:
@@ -130,3 +136,21 @@ def _to_int(value: object) -> int | None:
         return int(text.replace(",", ""))
     except ValueError:
         return None
+
+
+def _get_with_retry(session: requests.Session, url: str, params: dict) -> requests.Response:
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            response = session.get(url, params=params, timeout=30)
+            if response.status_code == 429:
+                time.sleep(10 + attempt * 15)
+                continue
+            response.raise_for_status()
+            return response
+        except Exception as exc:
+            last_error = exc
+            time.sleep(3 + attempt * 5)
+    if last_error:
+        raise last_error
+    raise RuntimeError("Request failed without a response")

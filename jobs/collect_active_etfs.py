@@ -17,7 +17,7 @@ from etf_track.products import EtfProduct, list_all_active_etfs
 
 def collect_active_for_date(
     trade_date: date,
-    pause_seconds: float = 0.5,
+    pause_seconds: float = 2.0,
     products: list[EtfProduct] | None = None,
 ) -> int:
     if products is None:

@@ -47,14 +47,26 @@ def download_kodex_holdings(fid: str, trade_date: date) -> pd.DataFrame:
     if not json_frame.empty:
         return json_frame
 
-    response = requests.get(
-        "https://www.samsungfund.com/excel_pdf.do",
-        params={"fId": fid, "gijunYMD": trade_date.strftime("%Y%m%d")},
-        headers={**HEADERS, "Referer": "https://www.samsungfund.com/etf/product/library/pdf.do"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return _read_excel(response.content)
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            response = requests.get(
+                "https://www.samsungfund.com/excel_pdf.do",
+                params={"fId": fid, "gijunYMD": trade_date.strftime("%Y%m%d")},
+                headers={**HEADERS, "Referer": "https://www.samsungfund.com/etf/product/library/pdf.do"},
+                timeout=30,
+            )
+            if response.status_code == 429:
+                time.sleep(10 + attempt * 15)
+                continue
+            response.raise_for_status()
+            return _read_excel(response.content)
+        except Exception as exc:
+            last_error = exc
+            time.sleep(3 + attempt * 5)
+    if last_error:
+        raise last_error
+    raise RuntimeError("KODEX Excel download failed without a response")
 
 
 def _download_kodex_holdings_json(fid: str, trade_date: date) -> pd.DataFrame:
