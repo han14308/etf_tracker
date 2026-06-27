@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 
 from etf_track.active_backfill import get_active_backfill_status, start_active_backfill
 from etf_track.backfill import get_backfill_status, start_backfill
-from etf_track.config import BACKFILL_TOKEN
+from etf_track.config import ACTIVE_BACKFILL_ON_START_DAYS, BACKFILL_TOKEN
 from etf_track.krx_backfill import get_krx_backfill_status, start_krx_backfill
 from etf_track.db import (
     fetch_compare,
@@ -30,6 +30,12 @@ app = FastAPI(title="ETF Track")
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    if ACTIVE_BACKFILL_ON_START_DAYS > 0:
+        started = start_active_backfill(ACTIVE_BACKFILL_ON_START_DAYS)
+        print(
+            f"ACTIVE_BACKFILL_ON_START startup days={ACTIVE_BACKFILL_ON_START_DAYS} started={started}",
+            flush=True,
+        )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -170,4 +176,9 @@ def trigger_active_backfill(
 def active_backfill_status(token: str = Query(default="")) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    return get_active_backfill_status()
+
+
+@app.get("/api/active/backfill/status")
+def public_active_backfill_status() -> dict:
     return get_active_backfill_status()

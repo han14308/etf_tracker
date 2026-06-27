@@ -68,6 +68,8 @@ def _run_active_backfill(days: int) -> None:
                 _add_message(f"SKIP {trade_date.isoformat()} {exc}")
             time.sleep(2)
         _add_message(f"Active ETF backfill complete rows={total}")
+    except Exception as exc:
+        _add_message(f"FAILED active ETF backfill: {exc}")
     finally:
         with _lock:
             _status["running"] = False
