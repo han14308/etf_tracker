@@ -7,7 +7,7 @@
   <style>
     :root {
       --bg: #f6f7f9;
-      --panel: #fff;
+      --panel: #ffffff;
       --line: #dde2e8;
       --text: #171a1f;
       --muted: #667085;
@@ -24,8 +24,6 @@
     label { font-size: 13px; color: #344054; }
     input, select, button { height: 36px; border: 1px solid #cfd4dc; background: #fff; padding: 0 10px; font-size: 14px; }
     button { background: var(--blue); color: #fff; border-color: var(--blue); cursor: pointer; }
-    .secondary { background: #fff; color: var(--blue); border-color: #9cc2ff; }
-    .danger { background: #fff; color: #b42318; border-color: #f3b8b2; }
     .tabs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 14px; }
     .tab { flex: 0 0 auto; min-width: 150px; max-width: 260px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 10px 12px; text-align: left; color: var(--text); }
     .tab.active { border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
@@ -34,49 +32,39 @@
     .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 4px 0 20px; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 15px; }
     .metric { margin-top: 8px; font-size: 24px; font-weight: 700; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
     .panel + .panel { margin-top: 16px; }
     .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
     .panel-title { font-weight: 700; }
     .panel-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .search { width: 240px; }
-    .table-wrap { overflow: auto; max-height: 560px; }
+    .table-wrap { overflow: auto; max-height: 620px; }
     table { width: 100%; min-width: 860px; border-collapse: collapse; }
     th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 13px; white-space: nowrap; }
     th { position: sticky; top: 0; background: #f2f4f7; color: #344054; z-index: 1; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: #f8fbff; }
     tbody tr.selected { background: #eef6ff; }
     .chart { width: 100%; height: 340px; display: block; background: #fff; }
-    .selected-list, .rank-list { max-height: 430px; overflow: auto; }
-    .selected-item { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
-    .color-dot { width: 10px; height: 10px; border-radius: 50%; }
-    .selected-name, .rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .selected-name { font-weight: 700; }
+    .selected-list { max-height: 460px; overflow: auto; }
+    .selected-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
+    .selected-item input { width: 16px; height: 16px; }
+    .selected-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
     .selected-meta { margin-top: 3px; font-size: 12px; color: var(--muted); }
-    .rank-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf0f2; }
+    .remove { height: 28px; padding: 0 8px; background: #fff; color: #b42318; border-color: #f3b8b2; }
+    .rank-list { padding: 8px 0; }
+    .rank-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #edf0f2; cursor: pointer; }
+    .rank-item:hover { background: #f8fbff; }
+    .rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .rank-value { font-weight: 700; color: var(--green); }
     .empty { padding: 28px; text-align: center; color: var(--muted); }
-    .selector-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.28); display: none; align-items: flex-start; justify-content: center; padding: 80px 20px 20px; z-index: 50; }
-    .selector-backdrop.open { display: flex; }
-    .selector { width: min(760px, 100%); max-height: 78vh; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.22); display: flex; flex-direction: column; overflow: hidden; }
-    .selector-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
-    .selector-controls { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-    .selector-search { flex: 1 1 260px; }
-    .selector-list { overflow: auto; }
-    .selector-row { display: grid; grid-template-columns: 28px 1fr 90px 110px; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #edf0f2; cursor: pointer; }
-    .selector-row:hover { background: #f8fbff; }
-    .selector-row input { width: 18px; height: 18px; }
-    .selector-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-    .selector-meta { margin-top: 3px; font-size: 12px; color: var(--muted); }
-    .selector-value { text-align: right; font-size: 13px; }
     @media (max-width: 1060px) {
       main, header { padding-left: 16px; padding-right: 16px; }
       .grid { grid-template-columns: 1fr 1fr; }
       .layout { grid-template-columns: 1fr; }
       .search { width: 100%; }
-      .selector-row { grid-template-columns: 28px 1fr 82px; }
-      .selector-row .selector-value:last-child { display: none; }
     }
   </style>
 </head>
@@ -92,7 +80,6 @@
       <datalist id="dateOptions"></datalist>
       <label>빠른 선택 <select id="dateSelect"></select></label>
       <button id="refresh">조회</button>
-      <button id="openSelector" class="secondary">종목 선택</button>
       <span id="status" class="muted"></span>
     </div>
 
@@ -135,7 +122,7 @@
           <div class="panel-head">
             <div>
               <div class="panel-title">선택 종목 통합 그래프</div>
-              <div class="muted">종목 선택 창에서 체크한 항목만 표시됩니다.</div>
+              <div class="muted">체크된 종목만 한 그래프에 표시됩니다.</div>
             </div>
             <div class="panel-tools">
               <label>기준
@@ -154,8 +141,8 @@
       <aside>
         <section class="panel">
           <div class="panel-head">
-            <div class="panel-title">체크된 종목</div>
-            <button id="clearSelected" class="danger">전체 해제</button>
+            <div class="panel-title">선택한 종목</div>
+            <button id="clearSelected" class="remove">전체 삭제</button>
           </div>
           <div id="selectedList" class="selected-list"></div>
         </section>
@@ -167,24 +154,6 @@
       </aside>
     </div>
   </main>
-
-  <div id="selectorBackdrop" class="selector-backdrop">
-    <div class="selector" role="dialog" aria-modal="true" aria-label="종목 선택">
-      <div class="selector-head">
-        <div>
-          <div class="panel-title">종목 선택</div>
-          <div id="selectorSub" class="muted"></div>
-        </div>
-        <button id="closeSelector" class="secondary">닫기</button>
-      </div>
-      <div class="selector-controls">
-        <input id="selectorSearch" class="selector-search" placeholder="종목명 또는 코드 검색" />
-        <button id="checkTop10" class="secondary">상위 10개 체크</button>
-        <button id="uncheckAll" class="secondary">전체 해제</button>
-      </div>
-      <div id="selectorList" class="selector-list"></div>
-    </div>
-  </div>
 
   <script>
     const colors = ['#1f6feb', '#d76b00', '#12805c', '#7c3aed', '#c2410c', '#0369a1', '#be123c', '#4d7c0f'];
@@ -204,9 +173,12 @@
 
     async function loadDates() {
       state.dates = await fetch('/api/dates').then(r => r.json());
-      document.getElementById('dateSelect').innerHTML = state.dates.map(d => `<option value="${d}">${d}</option>`).join('');
-      document.getElementById('dateOptions').innerHTML = state.dates.map(d => `<option value="${d}"></option>`).join('');
-      if (state.dates.length) document.getElementById('dateInput').value = state.dates[0];
+      const dateSelect = document.getElementById('dateSelect');
+      const dateInput = document.getElementById('dateInput');
+      const options = document.getElementById('dateOptions');
+      dateSelect.innerHTML = state.dates.map(d => `<option value="${d}">${d}</option>`).join('');
+      options.innerHTML = state.dates.map(d => `<option value="${d}"></option>`).join('');
+      if (state.dates.length) dateInput.value = state.dates[0];
     }
 
     async function loadProducts() {
@@ -218,11 +190,14 @@
       const date = currentDate();
       if (!date) return;
       setStatus('ETF 목록 조회 중...');
-      state.summaries = await fetch(`/api/summary?start=${date}&end=${date}`).then(r => r.json());
-      if (!state.selectedEtf || !state.summaries.some(row => row.etf_code === state.selectedEtf)) {
-        state.selectedEtf = preferredEtf(state.summaries);
+      const summaries = await fetch(`/api/summary?start=${date}&end=${date}`).then(r => r.json());
+      state.summaries = summaries;
+      if (!state.selectedEtf || !summaries.some(row => row.etf_code === state.selectedEtf)) {
+        state.selectedEtf = preferredEtf(summaries);
       }
-      clearSelection();
+      state.selected.clear();
+      renderSelected();
+      drawChart();
       renderTabs();
       await loadHoldings();
     }
@@ -250,7 +225,9 @@
       document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', async () => {
           state.selectedEtf = tab.dataset.etf;
-          clearSelection();
+          state.selected.clear();
+          renderSelected();
+          drawChart();
           renderTabs();
           await loadHoldings();
         });
@@ -264,7 +241,6 @@
       state.holdings = await fetch(`/api/holdings?trade_date=${date}&etf_code=${encodeURIComponent(state.selectedEtf)}`).then(r => r.json());
       renderSummary();
       renderRows();
-      renderSelector();
       setStatus(`${displayEtfName(state.selectedEtf)} ${fmtNum(state.holdings.length)}개 종목`);
     }
 
@@ -277,19 +253,17 @@
       document.getElementById('tableSub').textContent = `${currentDate()} · ${state.selectedEtf}`;
     }
 
-    function filteredHoldings(queryId = 'search') {
-      const query = document.getElementById(queryId).value.trim().toLowerCase();
-      return state.holdings
+    function renderRows() {
+      const query = document.getElementById('search').value.trim().toLowerCase();
+      const rows = state.holdings
         .filter(row => !query || String(row.name || '').toLowerCase().includes(query) || String(row.ticker || '').toLowerCase().includes(query))
         .sort((a, b) => Number(b.weight || 0) - Number(a.weight || 0));
-    }
 
-    function renderRows() {
-      const rows = filteredHoldings('search');
       document.getElementById('rows').innerHTML = rows.map(row => {
-        const selected = state.selected.has(securityKey(row)) ? ' selected' : '';
+        const key = securityKey(row);
+        const selected = state.selected.has(key) ? ' selected' : '';
         return `
-          <tr class="${selected}">
+          <tr class="${selected}" data-key="${escapeHtml(key)}">
             <td>${escapeHtml(row.ticker || '')}</td>
             <td>${escapeHtml(row.name || '')}</td>
             <td>${fmtNum(row.quantity, 2)}</td>
@@ -298,44 +272,29 @@
           </tr>`;
       }).join('') || '<tr><td colspan="5" class="empty">표시할 종목이 없습니다.</td></tr>';
 
+      document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
+        tr.addEventListener('click', () => {
+          const row = rows.find(item => securityKey(item) === tr.dataset.key);
+          if (row) addSecurity(row);
+        });
+      });
+
       const topRows = rows.slice(0, 10);
       document.getElementById('rankList').innerHTML = topRows.map(row => `
-        <div class="rank-item">
+        <div class="rank-item" data-key="${escapeHtml(securityKey(row))}">
           <div class="rank-name">${escapeHtml(row.name || row.ticker || '')}</div>
           <div class="rank-value">${fmtPct(row.weight)}</div>
         </div>
       `).join('') || '<div class="empty">데이터가 없습니다.</div>';
-    }
-
-    function renderSelector() {
-      const rows = filteredHoldings('selectorSearch');
-      document.getElementById('selectorSub').textContent = `${displayEtfName(state.selectedEtf)} · ${state.selected.size}개 체크`;
-      document.getElementById('selectorList').innerHTML = rows.map(row => {
-        const key = securityKey(row);
-        const checked = state.selected.has(key) ? 'checked' : '';
-        return `
-          <label class="selector-row">
-            <input type="checkbox" data-key="${escapeHtml(key)}" ${checked} />
-            <div>
-              <div class="selector-name">${escapeHtml(row.name || row.ticker || '')}</div>
-              <div class="selector-meta">${escapeHtml(row.ticker || '')}</div>
-            </div>
-            <div class="selector-value">${fmtPct(row.weight)}</div>
-            <div class="selector-value">${fmtWon(row.market_value)}</div>
-          </label>`;
-      }).join('') || '<div class="empty">표시할 종목이 없습니다.</div>';
-
-      document.querySelectorAll('#selectorList input[type="checkbox"]').forEach(input => {
-        input.addEventListener('change', async () => {
-          const row = state.holdings.find(item => securityKey(item) === input.dataset.key);
-          if (!row) return;
-          if (input.checked) await selectSecurity(row);
-          else unselectSecurity(input.dataset.key);
+      document.querySelectorAll('.rank-item[data-key]').forEach(item => {
+        item.addEventListener('click', () => {
+          const row = rows.find(x => securityKey(x) === item.dataset.key);
+          if (row) addSecurity(row);
         });
       });
     }
 
-    async function selectSecurity(row) {
+    async function addSecurity(row) {
       const key = securityKey(row);
       if (!state.selected.has(key)) {
         const item = {
@@ -343,18 +302,20 @@
           ticker: row.ticker,
           isin: row.isin,
           name: row.name,
+          checked: true,
           color: colors[state.selected.size % colors.length],
           history: [],
         };
         state.selected.set(key, item);
+        renderSelected();
         await loadHistory(item);
+      } else {
+        const item = state.selected.get(key);
+        item.checked = true;
+        renderSelected();
       }
-      renderAllSelectionViews();
-    }
-
-    function unselectSecurity(key) {
-      state.selected.delete(key);
-      renderAllSelectionViews();
+      renderRows();
+      drawChart();
     }
 
     async function loadHistory(item) {
@@ -362,41 +323,42 @@
       if (item.isin) params.set('isin', item.isin);
       else params.set('ticker', item.ticker || '');
       item.history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      renderSelected();
+      drawChart();
     }
 
     function renderSelected() {
       const items = [...state.selected.values()];
       const list = document.getElementById('selectedList');
       if (!items.length) {
-        list.innerHTML = '<div class="empty">종목 선택 버튼을 눌러 체크하세요.</div>';
+        list.innerHTML = '<div class="empty">종목을 클릭하면 여기에 추가됩니다.</div>';
         return;
       }
       list.innerHTML = items.map(item => `
         <div class="selected-item">
-          <span class="color-dot" style="background:${item.color}"></span>
+          <input type="checkbox" data-action="toggle" data-key="${escapeHtml(item.key)}" ${item.checked ? 'checked' : ''} />
           <div>
-            <div class="selected-name">${escapeHtml(item.name || item.ticker || '')}</div>
+            <div class="selected-name" style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</div>
             <div class="selected-meta">${escapeHtml(item.ticker || '')} · ${fmtNum(item.history.length)}일</div>
           </div>
-          <button class="danger" data-key="${escapeHtml(item.key)}">해제</button>
+          <button class="remove" data-action="remove" data-key="${escapeHtml(item.key)}">삭제</button>
         </div>
       `).join('');
-      list.querySelectorAll('button[data-key]').forEach(button => {
-        button.addEventListener('click', () => unselectSecurity(button.dataset.key));
+      list.querySelectorAll('[data-action="toggle"]').forEach(input => {
+        input.addEventListener('change', () => {
+          const item = state.selected.get(input.dataset.key);
+          if (item) item.checked = input.checked;
+          drawChart();
+        });
       });
-    }
-
-    function renderAllSelectionViews() {
-      renderSelected();
-      renderRows();
-      renderSelector();
-      drawChart();
-    }
-
-    function clearSelection() {
-      state.selected.clear();
-      renderSelected();
-      drawChart();
+      list.querySelectorAll('[data-action="remove"]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.selected.delete(button.dataset.key);
+          renderSelected();
+          renderRows();
+          drawChart();
+        });
+      });
     }
 
     function drawChart() {
@@ -412,10 +374,10 @@
       ctx.clearRect(0, 0, width, height);
 
       const metric = document.getElementById('chartMetric').value;
-      const series = [...state.selected.values()].filter(item => item.history.length);
+      const series = [...state.selected.values()].filter(item => item.checked && item.history.length);
       if (!series.length) {
         ctx.fillStyle = '#667085';
-        ctx.fillText('종목 선택 창에서 체크하면 그래프가 표시됩니다.', 24, 34);
+        ctx.fillText('체크된 종목의 히스토리가 없습니다.', 24, 34);
         return;
       }
 
@@ -475,26 +437,6 @@
       });
     }
 
-    function openSelector() {
-      renderSelector();
-      document.getElementById('selectorBackdrop').classList.add('open');
-      document.getElementById('selectorSearch').focus();
-    }
-
-    function closeSelector() {
-      document.getElementById('selectorBackdrop').classList.remove('open');
-    }
-
-    async function checkTop10() {
-      const rows = filteredHoldings('selectorSearch').slice(0, 10);
-      for (const row of rows) await selectSecurity(row);
-    }
-
-    function uncheckAll() {
-      state.selected.clear();
-      renderAllSelectionViews();
-    }
-
     function securityKey(row) {
       return row.isin || row.ticker || row.name;
     }
@@ -515,7 +457,7 @@
 
     function shortName(value, max = 26) {
       const text = String(value || '-');
-      return text.length > max ? `${text.slice(0, max - 1)}...` : text;
+      return text.length > max ? `${text.slice(0, max - 1)}…` : text;
     }
 
     function sumBy(rows, key) {
@@ -569,15 +511,12 @@
     });
     document.getElementById('dateInput').addEventListener('change', loadEtfTabs);
     document.getElementById('search').addEventListener('input', renderRows);
-    document.getElementById('selectorSearch').addEventListener('input', renderSelector);
     document.getElementById('chartMetric').addEventListener('change', drawChart);
-    document.getElementById('clearSelected').addEventListener('click', uncheckAll);
-    document.getElementById('openSelector').addEventListener('click', openSelector);
-    document.getElementById('closeSelector').addEventListener('click', closeSelector);
-    document.getElementById('checkTop10').addEventListener('click', checkTop10);
-    document.getElementById('uncheckAll').addEventListener('click', uncheckAll);
-    document.getElementById('selectorBackdrop').addEventListener('click', event => {
-      if (event.target.id === 'selectorBackdrop') closeSelector();
+    document.getElementById('clearSelected').addEventListener('click', () => {
+      state.selected.clear();
+      renderSelected();
+      renderRows();
+      drawChart();
     });
 
     init();
