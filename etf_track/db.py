@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import csv
 from datetime import date
 from decimal import Decimal
 from functools import lru_cache
 import hashlib
 import json
+import math
 from typing import Any
 
-import pandas as pd
 from sqlalchemy import Boolean, Date, JSON, MetaData, Numeric, String, Table, create_engine, delete, desc, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
@@ -82,7 +83,7 @@ def init_db() -> None:
 
 
 def _clean_number(value: Any) -> Decimal | None:
-    if pd.isna(value) or value == "":
+    if _is_missing(value) or value == "":
         return None
     if isinstance(value, str):
         value = value.replace(",", "").replace("%", "").strip()
@@ -93,7 +94,7 @@ def _clean_number(value: Any) -> Decimal | None:
 
 
 def _clean_text(value: Any) -> str | None:
-    if value is None or pd.isna(value):
+    if _is_missing(value):
         return None
     text = str(value).strip()
     if text == "" or text.lower() in {"nan", "none", "null"}:
@@ -107,6 +108,17 @@ def _sum_decimal(left: Decimal | None, right: Decimal | None) -> Decimal | None:
     if right is None:
         return left
     return left + right
+
+
+def _is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    try:
+        return bool(value != value)
+    except Exception:
+        return False
 
 
 def upsert_holdings(df: pd.DataFrame) -> int:
@@ -523,7 +535,7 @@ def fetch_krx_summary(start: date | None = None, end: date | None = None, source
 
 
 def _json_value(value: Any) -> Any:
-    if pd.isna(value):
+    if _is_missing(value):
         return None
     if isinstance(value, Decimal):
         return float(value)
@@ -548,10 +560,14 @@ def _guess_field(record: dict[str, Any], candidates: list[str]) -> str | None:
 def _load_sector_master() -> dict[str, dict[str, str]]:
     if not SECURITY_SECTOR_PATH.exists():
         return {}
-    frame = pd.read_csv(SECURITY_SECTOR_PATH, dtype=str).fillna("")
-    frame.columns = [str(col).strip().lower() for col in frame.columns]
     result: dict[str, dict[str, str]] = {}
-    for record in frame.to_dict("records"):
+    with SECURITY_SECTOR_PATH.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        records = [
+            {str(key).strip().lower(): (value or "") for key, value in record.items()}
+            for record in reader
+        ]
+    for record in records:
         ticker = _clean_text(record.get("ticker"))
         isin = _clean_text(record.get("isin"))
         meta = {

@@ -7,10 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from etf_track.active_backfill import get_active_backfill_status, start_active_backfill
-from etf_track.backfill import get_backfill_status, start_backfill
 from etf_track.config import ACTIVE_BACKFILL_ON_START_DAYS, BACKFILL_TOKEN
-from etf_track.krx_backfill import get_krx_backfill_status, start_krx_backfill
 from etf_track.db import (
     fetch_compare,
     fetch_dates,
@@ -36,6 +33,8 @@ def startup() -> None:
     except Exception as exc:
         print(f"STARTUP_INIT_DB_FAILED {type(exc).__name__}: {exc}", flush=True)
     if ACTIVE_BACKFILL_ON_START_DAYS > 0:
+        from etf_track.active_backfill import start_active_backfill
+
         started = start_active_backfill(ACTIVE_BACKFILL_ON_START_DAYS)
         print(
             f"ACTIVE_BACKFILL_ON_START startup days={ACTIVE_BACKFILL_ON_START_DAYS} started={started}",
@@ -152,6 +151,8 @@ def trigger_backfill(
 ) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.backfill import get_backfill_status, start_backfill
+
     started = start_backfill(days)
     status = get_backfill_status()
     return {"started": started, "status": status}
@@ -161,6 +162,8 @@ def trigger_backfill(
 def backfill_status(token: str = Query(default="")) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.backfill import get_backfill_status
+
     return get_backfill_status()
 
 
@@ -172,6 +175,8 @@ def trigger_krx_backfill(
 ) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.krx_backfill import get_krx_backfill_status, start_krx_backfill
+
     started = start_krx_backfill(days)
     status = get_krx_backfill_status()
     return {"started": started, "status": status}
@@ -181,6 +186,8 @@ def trigger_krx_backfill(
 def krx_backfill_status(token: str = Query(default="")) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.krx_backfill import get_krx_backfill_status
+
     return get_krx_backfill_status()
 
 
@@ -192,6 +199,8 @@ def trigger_active_backfill(
 ) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.active_backfill import get_active_backfill_status, start_active_backfill
+
     started = start_active_backfill(days)
     status = get_active_backfill_status()
     return {"started": started, "status": status}
@@ -201,9 +210,13 @@ def trigger_active_backfill(
 def active_backfill_status(token: str = Query(default="")) -> dict:
     if not BACKFILL_TOKEN or token != BACKFILL_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid backfill token")
+    from etf_track.active_backfill import get_active_backfill_status
+
     return get_active_backfill_status()
 
 
 @app.get("/api/active/backfill/status")
 def public_active_backfill_status() -> dict:
+    from etf_track.active_backfill import get_active_backfill_status
+
     return get_active_backfill_status()
