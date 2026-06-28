@@ -9,6 +9,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from etf_track.pykrx_active import collect_pykrx_active_for_date
+from jobs.collect_active_etfs import collect_active_for_date
 
 
 def latest_business_day(today: date | None = None) -> date:
@@ -22,5 +23,9 @@ def latest_business_day(today: date | None = None) -> date:
 
 if __name__ == "__main__":
     target = latest_business_day()
-    count = collect_pykrx_active_for_date(target)
+    try:
+        count = collect_pykrx_active_for_date(target)
+    except Exception as exc:
+        print(f"PYKRX_SKIP {target.isoformat()} {exc}", flush=True)
+        count = collect_active_for_date(target, pause_seconds=3.0)
     print(f"Collected {count} pykrx active ETF holding rows for {target.isoformat()}")

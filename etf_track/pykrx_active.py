@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+ACTIVE_KEYWORD = "\uc561\ud2f0\ube0c"
+
 
 @dataclass(frozen=True)
 class PykrxEtfProduct:
@@ -26,9 +28,10 @@ def list_pykrx_active_etfs(trade_date: date) -> list[PykrxEtfProduct]:
     stock = _stock_module()
     ymd = trade_date.strftime("%Y%m%d")
     products: list[PykrxEtfProduct] = []
-    for ticker in stock.get_etf_ticker_list(ymd):
+    tickers = stock.get_etf_ticker_list(ymd)
+    for ticker in tickers:
         name = str(stock.get_etf_ticker_name(ticker) or "").strip()
-        if "액티브" not in name:
+        if ACTIVE_KEYWORD not in name:
             continue
         products.append(
             PykrxEtfProduct(
@@ -48,13 +51,13 @@ def download_pykrx_active_holdings(product: PykrxEtfProduct, trade_date: date) -
     ymd = trade_date.strftime("%Y%m%d")
     raw = stock.get_etf_portfolio_deposit_file(product.ticker, ymd)
     if raw is None or raw.empty:
-        return pd.DataFrame(columns=["trade_date", "etf_code", "isin", "ticker", "name", "quantity", "market_value", "weight"])
+        return _empty_frame()
 
     frame = raw.reset_index()
-    ticker_col = _find_column(frame, ["티커", "index", "종목코드"])
-    quantity_col = _find_column(frame, ["계약수", "수량"])
-    value_col = _find_column(frame, ["금액", "평가금액"])
-    weight_col = _find_column(frame, ["비중"])
+    ticker_col = _find_column(frame, ["\ud2f0\ucee4", "index", "\uc885\ubaa9\ucf54\ub4dc"])
+    quantity_col = _find_column(frame, ["\uacc4\uc57d\uc218", "\uc218\ub7c9"])
+    value_col = _find_column(frame, ["\uae08\uc561", "\ud3c9\uac00\uae08\uc561"])
+    weight_col = _find_column(frame, ["\ube44\uc911"])
 
     rows = []
     for record in frame.to_dict("records"):
@@ -95,11 +98,15 @@ def collect_pykrx_active_for_date(trade_date: date, pause_seconds: float = 1.0) 
     return total
 
 
+def _empty_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=["trade_date", "etf_code", "isin", "ticker", "name", "quantity", "market_value", "weight"])
+
+
 def _stock_module():
     try:
         from pykrx import stock
     except ImportError as exc:
-        raise RuntimeError("pykrx is not installed. Run `pip install -r requirements.txt`.") from exc
+        raise RuntimeError("pykrx is not installed. Run `pip install -r requirements-collector.txt`.") from exc
     return stock
 
 
@@ -133,7 +140,7 @@ def _normalize_ticker(value: Any) -> str:
 
 def _security_name(stock: Any, ticker: str) -> str:
     if ticker == "CASH":
-        return "현금"
+        return "\ud604\uae08"
     try:
         name = stock.get_market_ticker_name(ticker)
         if name:
