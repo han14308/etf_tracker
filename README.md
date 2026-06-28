@@ -131,6 +131,12 @@ Set it to `0` if you want to start the server without automatic collection.
 
 PyKRX can collect active ETFs listed on KRX by filtering ETF names that contain `액티브`.
 
+Install collector-only dependencies before running PyKRX jobs:
+
+```bash
+pip install -r requirements-collector.txt
+```
+
 Collect one business day:
 
 ```bash
