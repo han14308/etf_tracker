@@ -27,10 +27,20 @@ def main() -> None:
         default=1.0,
         help="Seconds to wait between ETF portfolio downloads.",
     )
+    parser.add_argument(
+        "--allow-sqlite",
+        action="store_true",
+        help="Allow deleting and backfilling the local SQLite database.",
+    )
     args = parser.parse_args()
 
     if not args.yes:
-        raise SystemExit("This deletes etf_holdings and etf_products. Re-run with --yes to continue.")
+        raise SystemExit("This deletes etf_holdings, etf_products, and krx_rows. Re-run with --yes to continue.")
+    if DATABASE_URL.startswith("sqlite") and not args.allow_sqlite:
+        raise SystemExit(
+            "DATABASE_URL points to local SQLite, not Supabase. "
+            "Fix .env or add --allow-sqlite if you really want local data."
+        )
 
     print(f"DATABASE_URL={_masked_database_url(DATABASE_URL)}", flush=True)
     print(f"ALLOWED_ISSUERS={', '.join(ACTIVE_ETF_ISSUERS)}", flush=True)

@@ -6,9 +6,9 @@ import json
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT_DIR / ".env")
+
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
@@ -26,8 +26,8 @@ ACTIVE_BACKFILL_ON_START_DAYS = int(os.getenv("ACTIVE_BACKFILL_ON_START_DAYS", "
 SECURITY_MASTER_PATH = Path(os.getenv("SECURITY_MASTER_PATH", DATA_DIR / "security_master.csv"))
 SECURITY_SECTOR_PATH = Path(os.getenv("SECURITY_SECTOR_PATH", DATA_DIR / "security_sectors.csv"))
 BACKFILL_TOKEN = os.getenv("BACKFILL_TOKEN", "")
-KRX_USERNAME = os.getenv("KRX_USERNAME", "")
-KRX_PASSWORD = os.getenv("KRX_PASSWORD", "")
+KRX_USERNAME = os.getenv("KRX_USERNAME", os.getenv("KRX_ID", ""))
+KRX_PASSWORD = os.getenv("KRX_PASSWORD", os.getenv("KRX_PW", ""))
 KRX_COOKIE = os.getenv("KRX_COOKIE", "")
 KRX_MENU_ID = os.getenv("KRX_MENU_ID", "MDC0201030108")
 KRX_STAT_URL = os.getenv("KRX_STAT_URL", "dbms/MDC/STAT/standard/MDCSTAT13108")

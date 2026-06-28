@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import date
+import os
 import time
 from typing import Any
 
 import pandas as pd
 
-from etf_track.config import ACTIVE_ETF_ISSUERS
+from etf_track.config import ACTIVE_ETF_ISSUERS, KRX_PASSWORD, KRX_USERNAME
 
 ACTIVE_KEYWORD = "\uc561\ud2f0\ube0c"
 
@@ -116,6 +117,10 @@ def _empty_frame() -> pd.DataFrame:
 
 
 def _stock_module():
+    if KRX_USERNAME:
+        os.environ.setdefault("KRX_ID", KRX_USERNAME)
+    if KRX_PASSWORD:
+        os.environ.setdefault("KRX_PW", KRX_PASSWORD)
     try:
         from pykrx import stock
     except ImportError as exc:
