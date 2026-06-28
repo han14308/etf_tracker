@@ -87,6 +87,7 @@ def clear_etf_data() -> None:
     with get_engine().begin() as conn:
         conn.execute(delete(holdings))
         conn.execute(delete(etf_products))
+        conn.execute(delete(krx_rows))
 
 
 def _clean_number(value: Any) -> Decimal | None:

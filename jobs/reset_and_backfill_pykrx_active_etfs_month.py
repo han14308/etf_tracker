@@ -34,7 +34,7 @@ def main() -> None:
 
     print(f"DATABASE_URL={_masked_database_url(DATABASE_URL)}", flush=True)
     print(f"ALLOWED_ISSUERS={', '.join(ACTIVE_ETF_ISSUERS)}", flush=True)
-    print("RESET etf_holdings, etf_products", flush=True)
+    print("RESET etf_holdings, etf_products, krx_rows", flush=True)
     clear_etf_data()
 
     dates = recent_weekdays(args.days)
