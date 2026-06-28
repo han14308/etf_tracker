@@ -7,13 +7,28 @@ import json
 from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT_DIR / ".env")
+ENV_PATH = ROOT_DIR / ".env"
+load_dotenv(ENV_PATH, override=True)
+
+
+def _read_env_file_value(key: str) -> str:
+    if not ENV_PATH.exists():
+        return ""
+    prefix = f"{key}="
+    for line in ENV_PATH.read_text(encoding="utf-8-sig").splitlines():
+        text = line.strip()
+        if text.startswith(prefix):
+            return text.split("=", 1)[1].strip()
+    return ""
+
 
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 default_database_path = Path("/tmp/etf_track.db") if os.getenv("VERCEL") else DATA_DIR / "etf_track.db"
 raw_database_url = os.getenv("DATABASE_URL", "").strip().strip("\"'")
+if raw_database_url in {"", "DATABASE_URL"}:
+    raw_database_url = _read_env_file_value("DATABASE_URL").strip().strip("\"'")
 if raw_database_url.startswith("DATABASE_URL="):
     raw_database_url = raw_database_url.split("=", 1)[1].strip().strip("\"'")
 if raw_database_url in {"", "DATABASE_URL"}:
