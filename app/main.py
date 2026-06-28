@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -30,7 +31,10 @@ app = FastAPI(title="ETF Track")
 
 @app.on_event("startup")
 def startup() -> None:
-    init_db()
+    try:
+        init_db()
+    except Exception as exc:
+        print(f"STARTUP_INIT_DB_FAILED {type(exc).__name__}: {exc}", flush=True)
     if ACTIVE_BACKFILL_ON_START_DAYS > 0:
         started = start_active_backfill(ACTIVE_BACKFILL_ON_START_DAYS)
         print(
@@ -42,6 +46,17 @@ def startup() -> None:
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> str:
     return (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+
+
+@app.get("/api/health")
+def health() -> dict:
+    database_url = os.getenv("DATABASE_URL", "")
+    return {
+        "ok": True,
+        "database_url_set": bool(database_url),
+        "database_url_scheme": database_url.split(":", 1)[0] if database_url else None,
+        "active_backfill_on_start_days": ACTIVE_BACKFILL_ON_START_DAYS,
+    }
 
 
 @app.get("/api/dates")
