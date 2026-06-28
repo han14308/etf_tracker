@@ -127,6 +127,49 @@ ACTIVE_BACKFILL_ON_START_DAYS=31
 
 Set it to `0` if you want to start the server without automatic collection.
 
+## PyKRX Active ETF Collection
+
+PyKRX can collect active ETFs listed on KRX by filtering ETF names that contain `액티브`.
+
+Collect one business day:
+
+```bash
+python jobs/collect_pykrx_active_etfs.py
+```
+
+Backfill the recent month:
+
+```bash
+python jobs/backfill_pykrx_active_etfs_month.py
+```
+
+Rows are stored with ETF codes like:
+
+```text
+KRX_494890
+```
+
+For example, `KODEX 200액티브` is listed as ticker `494890`.
+
+## Vercel
+
+Vercel should serve only the web/API. Do not run long collection jobs inside Vercel serverless functions.
+
+Set these environment variables in Vercel:
+
+```text
+DATABASE_URL=your_supabase_transaction_pooler_url
+ACTIVE_BACKFILL_ON_START_DAYS=0
+```
+
+Then deploy the repo to Vercel. The included `vercel.json` routes all requests to the FastAPI app at `api/index.py`.
+
+Run collection separately from your local machine, GitHub Actions, or another worker:
+
+```bash
+python jobs/backfill_pykrx_active_etfs_month.py
+```
+
 ## ISIN Mapping
 
 Edit `data/security_master.csv`.
