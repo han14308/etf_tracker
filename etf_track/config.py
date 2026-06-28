@@ -13,9 +13,12 @@ DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 default_database_path = Path("/tmp/etf_track.db") if os.getenv("VERCEL") else DATA_DIR / "etf_track.db"
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_database_path}")
-if DATABASE_URL.startswith("DATABASE_URL="):
-    DATABASE_URL = DATABASE_URL.split("=", 1)[1]
+raw_database_url = os.getenv("DATABASE_URL", "").strip().strip("\"'")
+if raw_database_url.startswith("DATABASE_URL="):
+    raw_database_url = raw_database_url.split("=", 1)[1].strip().strip("\"'")
+if raw_database_url in {"", "DATABASE_URL"}:
+    raw_database_url = f"sqlite:///{default_database_path}"
+DATABASE_URL = raw_database_url
 KODEX_200_FID = os.getenv("KODEX_200_FID", "2ETF01")
 TIME_KOSPI_ACTIVE_IDX = int(os.getenv("TIME_KOSPI_ACTIVE_IDX", "11"))
 COLLECT_DAYS = int(os.getenv("COLLECT_DAYS", "31"))
