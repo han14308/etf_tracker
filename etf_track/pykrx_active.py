@@ -9,8 +9,7 @@ from typing import Any
 import pandas as pd
 
 from etf_track.config import ACTIVE_ETF_ISSUERS, KRX_PASSWORD, KRX_USERNAME
-
-ACTIVE_KEYWORD = "\uc561\ud2f0\ube0c"
+from etf_track.filters import is_equity_active_etf_name
 
 
 @dataclass(frozen=True)
@@ -38,7 +37,7 @@ def list_pykrx_active_etfs(
     tickers = stock.get_etf_ticker_list(ymd)
     for ticker in tickers:
         name = str(stock.get_etf_ticker_name(ticker) or "").strip()
-        if ACTIVE_KEYWORD not in name:
+        if not is_equity_active_etf_name(name):
             continue
         issuer = _issuer_from_name(name)
         if allowed_issuers and issuer.upper() not in allowed_issuers:

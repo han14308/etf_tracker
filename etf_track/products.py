@@ -8,6 +8,7 @@ import time
 import requests
 
 from etf_track.download import HEADERS
+from etf_track.filters import is_equity_active_etf_name
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ def list_time_active_etfs() -> list[EtfProduct]:
     )
     for idx, name_html in pattern.findall(response.text):
         name = _strip_tags(name_html)
-        if "액티브" not in name:
+        if not is_equity_active_etf_name(name):
             continue
         products[idx] = EtfProduct(
             issuer="TIME",
@@ -68,7 +69,7 @@ def list_kodex_active_etfs() -> list[EtfProduct]:
                 "pageNo": page,
                 "pageRows": 100,
                 "srchTerm": "w",
-                "srchVal": "액티브",
+                "srchVal": "\uc561\ud2f0\ube0c",
             },
         )
         rows = response.json()
@@ -78,7 +79,7 @@ def list_kodex_active_etfs() -> list[EtfProduct]:
         for row in rows:
             name = str(row.get("fNm") or "").strip()
             fid = str(row.get("fId") or "").strip()
-            if not fid or "액티브" not in name:
+            if not fid or not is_equity_active_etf_name(name):
                 continue
             if total_count is None:
                 total_count = _to_int(row.get("totalCnt"))
