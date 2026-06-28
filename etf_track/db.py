@@ -82,6 +82,13 @@ def init_db() -> None:
     metadata.create_all(get_engine())
 
 
+def clear_etf_data() -> None:
+    init_db()
+    with get_engine().begin() as conn:
+        conn.execute(delete(holdings))
+        conn.execute(delete(etf_products))
+
+
 def _clean_number(value: Any) -> Decimal | None:
     if _is_missing(value) or value == "":
         return None

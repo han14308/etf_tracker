@@ -32,3 +32,25 @@ KRX_COOKIE = os.getenv("KRX_COOKIE", "")
 KRX_MENU_ID = os.getenv("KRX_MENU_ID", "MDC0201030108")
 KRX_STAT_URL = os.getenv("KRX_STAT_URL", "dbms/MDC/STAT/standard/MDCSTAT13108")
 KRX_EXTRA_PARAMS = json.loads(os.getenv("KRX_EXTRA_PARAMS", "{}"))
+
+DEFAULT_ACTIVE_ISSUERS = [
+    "KODEX",
+    "TIGER",
+    "HANARO",
+    "RISE",
+    "KIWOOM",
+    "ACE",
+    "PLUS",
+    "SOL",
+    "TIME",
+    "1Q",
+    "KoAct",
+    "WON",
+    "UNICORN",
+    "IBK",
+]
+ACTIVE_ETF_ISSUERS = [
+    issuer.strip()
+    for issuer in os.getenv("ACTIVE_ETF_ISSUERS", ",".join(DEFAULT_ACTIVE_ISSUERS)).split(",")
+    if issuer.strip()
+]

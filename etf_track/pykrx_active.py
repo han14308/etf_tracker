@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from etf_track.config import ACTIVE_ETF_ISSUERS
+
 ACTIVE_KEYWORD = "\uc561\ud2f0\ube0c"
 
 
@@ -24,18 +26,25 @@ class PykrxEtfProduct:
         return asdict(self)
 
 
-def list_pykrx_active_etfs(trade_date: date) -> list[PykrxEtfProduct]:
+def list_pykrx_active_etfs(
+    trade_date: date,
+    issuers: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> list[PykrxEtfProduct]:
     stock = _stock_module()
     ymd = trade_date.strftime("%Y%m%d")
+    allowed_issuers = _normalize_issuer_set(issuers or ACTIVE_ETF_ISSUERS)
     products: list[PykrxEtfProduct] = []
     tickers = stock.get_etf_ticker_list(ymd)
     for ticker in tickers:
         name = str(stock.get_etf_ticker_name(ticker) or "").strip()
         if ACTIVE_KEYWORD not in name:
             continue
+        issuer = _issuer_from_name(name)
+        if allowed_issuers and issuer.upper() not in allowed_issuers:
+            continue
         products.append(
             PykrxEtfProduct(
-                issuer=_issuer_from_name(name),
+                issuer=issuer,
                 etf_code=f"KRX_{ticker}",
                 source_id=ticker,
                 name=name,
@@ -77,10 +86,14 @@ def download_pykrx_active_holdings(product: PykrxEtfProduct, trade_date: date) -
     return pd.DataFrame(rows)
 
 
-def collect_pykrx_active_for_date(trade_date: date, pause_seconds: float = 1.0) -> int:
+def collect_pykrx_active_for_date(
+    trade_date: date,
+    pause_seconds: float = 1.0,
+    issuers: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> int:
     from etf_track.db import upsert_holdings, upsert_products
 
-    products = list_pykrx_active_etfs(trade_date)
+    products = list_pykrx_active_etfs(trade_date, issuers=issuers)
     upsert_products([product.to_dict() for product in products])
     print(f"PYKRX_ACTIVE_PRODUCTS date={trade_date.isoformat()} count={len(products)}", flush=True)
 
@@ -112,6 +125,10 @@ def _stock_module():
 
 def _issuer_from_name(name: str) -> str:
     return name.split()[0] if name.split() else "KRX"
+
+
+def _normalize_issuer_set(issuers: list[str] | set[str] | tuple[str, ...]) -> set[str]:
+    return {str(issuer).strip().upper() for issuer in issuers if str(issuer).strip()}
 
 
 def _find_column(frame: pd.DataFrame, candidates: list[str]) -> str | None:
