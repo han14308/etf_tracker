@@ -540,6 +540,7 @@
           color: colors[state.selected.size % colors.length],
           histories: {},
           closeHistory: [],
+          closeError: '',
         };
         state.selected.set(key, item);
         renderSelected();
@@ -557,7 +558,8 @@
       const params = new URLSearchParams({ etf_code: state.selectedEtf });
       if (item.isin) params.set('isin', item.isin);
       if (item.ticker) params.set('ticker', item.ticker);
-      item.histories[state.selectedEtf] = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      const history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      item.histories[state.selectedEtf] = history.filter(row => matchesSecurity(item, row));
       await loadMarketDatesForHistory(currentHistory(item));
       await loadCloseHistory(item);
       renderSelected();
@@ -579,16 +581,31 @@
 
     async function loadCloseHistory(item) {
       item.closeHistory = [];
-      if (!isKrxTicker(item.ticker)) return;
+      item.closeError = '';
+      if (!isKrxTicker(item.ticker)) {
+        item.closeError = '국내 6자리 코드 아님';
+        return;
+      }
       const history = currentHistory(item);
-      if (!history.length) return;
+      if (!history.length) {
+        item.closeError = '보유 이력 없음';
+        return;
+      }
       const dates = history.map(point => point.trade_date).filter(Boolean).sort();
       const params = new URLSearchParams({
         ticker: item.ticker,
         start: dates[0],
         end: dates[dates.length - 1],
       });
-      item.closeHistory = await fetch(`/api/close-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      try {
+        const response = await fetch(`/api/close-history?${params.toString()}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        item.closeHistory = await response.json();
+        if (!item.closeHistory.length) item.closeError = '종가 없음';
+      } catch (error) {
+        item.closeHistory = [];
+        item.closeError = '종가 API 실패';
+      }
       item.closeHistory.forEach(point => state.marketDates.add(normalizeTradeDate(point.trade_date)));
     }
 
@@ -677,7 +694,7 @@
     }
 
     function currentHistory(item) {
-      return item.histories?.[state.selectedEtf] || [];
+      return (item.histories?.[state.selectedEtf] || []).filter(row => matchesSecurity(item, row));
     }
 
     function renderSelected() {
@@ -690,9 +707,9 @@
       list.innerHTML = items.map(item => `
         <div class="selected-item">
           <input type="checkbox" data-action="toggle" data-key="${escapeHtml(item.key)}" ${item.checked ? 'checked' : ''} />
-          <div>
-            <div class="selected-name" style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</div>
-            <div class="selected-meta">${escapeHtml(item.ticker || '')} · 보유 ${fmtNum(currentHistory(item).length)}일 · 종가 ${fmtNum(item.closeHistory?.length || 0)}일</div>
+            <div>
+              <div class="selected-name" style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</div>
+            <div class="selected-meta">${escapeHtml(item.ticker || '')} · 보유 ${fmtNum(currentHistory(item).length)}일 · ${closeHistoryLabel(item)}</div>
           </div>
           <button class="remove" data-action="remove" data-key="${escapeHtml(item.key)}">삭제</button>
         </div>
@@ -712,6 +729,11 @@
           drawChart();
         });
       });
+    }
+
+    function closeHistoryLabel(item) {
+      if (item.closeHistory?.length) return `종가 ${fmtNum(item.closeHistory.length)}일`;
+      return item.closeError || '종가 대기';
     }
 
     function drawChart() {
@@ -843,7 +865,18 @@
     }
 
     function securityKey(row) {
-      return row.isin || row.ticker || row.name;
+      return row.ticker || row.isin || row.name;
+    }
+
+    function matchesSecurity(item, row) {
+      const itemTicker = String(item?.ticker || '').trim();
+      const rowTicker = String(row?.ticker || '').trim();
+      if (itemTicker && rowTicker) return itemTicker === rowTicker;
+      const itemIsin = String(item?.isin || '').trim();
+      const rowIsin = String(row?.isin || '').trim();
+      if (itemIsin && rowIsin) return itemIsin === rowIsin;
+      if (!rowTicker && !rowIsin) return true;
+      return securityKey(item) === securityKey(row);
     }
 
     function isTradingWeekday(value) {

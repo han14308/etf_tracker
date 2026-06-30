@@ -318,12 +318,10 @@ def fetch_holding_history(
         return []
 
     stmt = select(holdings).where(holdings.c.etf_code == etf_code)
-    if isin and ticker:
-        stmt = stmt.where(or_(holdings.c.isin == isin, holdings.c.ticker == ticker))
-    elif isin:
-        stmt = stmt.where(holdings.c.isin == isin)
-    else:
+    if ticker:
         stmt = stmt.where(holdings.c.ticker == ticker)
+    else:
+        stmt = stmt.where(holdings.c.isin == isin)
     stmt = stmt.order_by(holdings.c.trade_date.asc())
 
     with get_engine().connect() as conn:
