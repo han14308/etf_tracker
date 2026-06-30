@@ -24,12 +24,17 @@
     label { font-size: 13px; color: #344054; }
     input, select, button { height: 36px; border: 1px solid #cfd4dc; background: #fff; padding: 0 10px; font-size: 14px; }
     button { background: var(--blue); color: #fff; border-color: var(--blue); cursor: pointer; }
-    .etf-picker { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin: 4px 0 16px; overflow: hidden; }
-    .etf-picker-head { display: grid; grid-template-columns: 1fr 180px auto; gap: 10px; align-items: center; padding: 12px; border-bottom: 1px solid var(--line); }
+    .etf-picker { position: relative; max-width: 620px; margin: 4px 0 16px; }
+    .etf-combo { width: 100%; height: 42px; display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); padding: 0 12px; text-align: left; }
+    .etf-combo.active { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.12); }
+    .etf-combo-main { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+    .etf-combo-meta { color: var(--muted); font-size: 12px; }
+    .etf-menu { position: absolute; z-index: 20; top: 48px; left: 0; width: min(620px, calc(100vw - 56px)); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 16px 36px rgba(16, 24, 40, 0.16); overflow: hidden; }
+    .etf-picker-head { display: grid; grid-template-columns: 1fr 118px 148px 132px; gap: 8px; padding: 10px; border-bottom: 1px solid var(--line); }
     .etf-search { width: 100%; }
-    .etf-count { min-width: 90px; text-align: right; font-size: 13px; color: var(--muted); }
-    .etf-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0; max-height: 260px; overflow: auto; }
-    .etf-option { height: auto; min-height: 58px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 0; border-bottom: 1px solid #edf0f2; border-right: 1px solid #edf0f2; background: #fff; color: var(--text); padding: 10px 12px; text-align: left; }
+    .etf-count { padding: 8px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid #edf0f2; }
+    .etf-list { max-height: 320px; overflow: auto; }
+    .etf-option { width: 100%; height: auto; min-height: 54px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; border: 0; border-bottom: 1px solid #edf0f2; background: #fff; color: var(--text); padding: 9px 12px; text-align: left; }
     .etf-option:hover { background: #f8fbff; }
     .etf-option.active { background: #eef6ff; box-shadow: inset 3px 0 0 var(--blue); }
     .etf-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
@@ -71,8 +76,9 @@
       .grid { grid-template-columns: 1fr 1fr; }
       .layout { grid-template-columns: 1fr; }
       .search { width: 100%; }
+      .etf-picker { max-width: none; }
+      .etf-menu { width: calc(100vw - 32px); }
       .etf-picker-head { grid-template-columns: 1fr; }
-      .etf-count { text-align: left; }
     }
   </style>
 </head>
@@ -174,6 +180,9 @@
       selected: new Map(),
       etfQuery: '',
       etfIssuer: 'ALL',
+      etfRegion: 'ALL',
+      etfTheme: 'ALL',
+      etfOpen: false,
     };
 
     async function init() {
@@ -248,52 +257,101 @@
         return;
       }
       const issuers = availableIssuers();
+      const themes = availableThemes();
       const query = state.etfQuery.trim().toLowerCase();
       const visible = state.summaries.filter(summary => {
         const name = displayEtfName(summary.etf_code);
         const issuer = issuerFromSummary(summary);
-        const haystack = `${name} ${summary.etf_code} ${issuer}`.toLowerCase();
-        return (state.etfIssuer === 'ALL' || issuer === state.etfIssuer) && (!query || haystack.includes(query));
+        const category = classifyEtf(summary);
+        const haystack = `${name} ${summary.etf_code} ${issuer} ${category.region} ${category.theme}`.toLowerCase();
+        return (
+          (state.etfIssuer === 'ALL' || issuer === state.etfIssuer) &&
+          (state.etfRegion === 'ALL' || category.region === state.etfRegion) &&
+          (state.etfTheme === 'ALL' || category.theme === state.etfTheme) &&
+          (!query || haystack.includes(query))
+        );
       });
 
+      const selectedSummary = state.summaries.find(summary => summary.etf_code === state.selectedEtf);
+      const selectedName = selectedSummary ? displayEtfName(selectedSummary.etf_code) : 'ETF 선택';
+      const selectedMeta = selectedSummary
+        ? `${state.selectedEtf} · ${issuerFromSummary(selectedSummary)} · ${fmtNum(selectedSummary.holding_count)}개`
+        : '날짜를 먼저 선택하세요';
       container.innerHTML = `
-        <div class="etf-picker-head">
-          <input id="etfSearch" class="etf-search" placeholder="ETF명, 코드, 운용사 검색" value="${escapeHtml(state.etfQuery)}" />
-          <select id="issuerFilter">
-            <option value="ALL">전체 운용사</option>
-            ${issuers.map(issuer => `<option value="${escapeHtml(issuer)}" ${issuer === state.etfIssuer ? 'selected' : ''}>${escapeHtml(issuer)}</option>`).join('')}
-          </select>
-          <div class="etf-count">${fmtNum(visible.length)} / ${fmtNum(state.summaries.length)}개</div>
-        </div>
-        <div class="etf-list">
-          ${visible.map(summary => {
+        <button id="etfCombo" class="etf-combo${state.etfOpen ? ' active' : ''}" type="button">
+          <span>
+            <span class="etf-combo-main">${escapeHtml(selectedName)}</span>
+            <span class="etf-combo-meta">${escapeHtml(selectedMeta)}</span>
+          </span>
+          <span>${state.etfOpen ? '▲' : '▼'}</span>
+        </button>
+        ${state.etfOpen ? `
+          <div class="etf-menu">
+            <div class="etf-picker-head">
+              <input id="etfSearch" class="etf-search" placeholder="ETF명, 코드, 운용사 검색" value="${escapeHtml(state.etfQuery)}" />
+              <select id="regionFilter">
+                <option value="ALL">전체 지역</option>
+                ${['국내', '해외', '혼합'].map(region => `<option value="${region}" ${region === state.etfRegion ? 'selected' : ''}>${region}</option>`).join('')}
+              </select>
+              <select id="themeFilter">
+                <option value="ALL">전체 테마</option>
+                ${themes.map(theme => `<option value="${escapeHtml(theme)}" ${theme === state.etfTheme ? 'selected' : ''}>${escapeHtml(theme)}</option>`).join('')}
+              </select>
+              <select id="issuerFilter">
+                <option value="ALL">전체 운용사</option>
+                ${issuers.map(issuer => `<option value="${escapeHtml(issuer)}" ${issuer === state.etfIssuer ? 'selected' : ''}>${escapeHtml(issuer)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="etf-count">${fmtNum(visible.length)} / ${fmtNum(state.summaries.length)}개</div>
+            <div class="etf-list">
+              ${visible.map(summary => {
             const name = displayEtfName(summary.etf_code);
             const active = summary.etf_code === state.selectedEtf ? ' active' : '';
+            const category = classifyEtf(summary);
             return `
               <button class="etf-option${active}" data-etf="${escapeHtml(summary.etf_code)}">
                 <span>
                   <span class="etf-name">${escapeHtml(shortName(name, 34))}</span>
-                  <span class="etf-meta">${escapeHtml(summary.etf_code)} · ${escapeHtml(issuerFromSummary(summary))}</span>
+                  <span class="etf-meta">${escapeHtml(summary.etf_code)} · ${escapeHtml(category.region)} · ${escapeHtml(category.theme)} · ${escapeHtml(issuerFromSummary(summary))}</span>
                 </span>
                 <span class="etf-badge">${fmtNum(summary.holding_count)}개</span>
               </button>`;
           }).join('') || '<div class="empty">검색 결과가 없습니다.</div>'}
-        </div>`;
+            </div>
+          </div>` : ''}`;
 
-      const search = document.getElementById('etfSearch');
-      search.addEventListener('input', event => {
-        state.etfQuery = event.target.value;
+      document.getElementById('etfCombo').addEventListener('click', () => {
+        state.etfOpen = !state.etfOpen;
         renderEtfPicker();
-        document.getElementById('etfSearch')?.focus();
       });
-      search.setSelectionRange(search.value.length, search.value.length);
-      document.getElementById('issuerFilter').addEventListener('change', event => {
+      const search = document.getElementById('etfSearch');
+      if (search) {
+        search.addEventListener('input', event => {
+          state.etfQuery = event.target.value;
+          renderEtfPicker();
+          document.getElementById('etfSearch')?.focus();
+        });
+        search.focus();
+        search.setSelectionRange(search.value.length, search.value.length);
+      }
+      document.getElementById('issuerFilter')?.addEventListener('change', event => {
         state.etfIssuer = event.target.value;
+        renderEtfPicker();
+      });
+      document.getElementById('regionFilter')?.addEventListener('change', event => {
+        state.etfRegion = event.target.value;
+        if (!availableThemes().includes(state.etfTheme)) state.etfTheme = 'ALL';
+        renderEtfPicker();
+      });
+      document.getElementById('themeFilter')?.addEventListener('change', event => {
+        state.etfTheme = event.target.value;
         renderEtfPicker();
       });
       document.querySelectorAll('.etf-option').forEach(option => {
         option.addEventListener('click', async () => {
           state.selectedEtf = option.dataset.etf;
+          state.etfOpen = false;
+          state.etfQuery = '';
           renderEtfPicker();
           await loadHoldings();
           await reloadSelectedHistories();
@@ -303,6 +361,58 @@
 
     function availableIssuers() {
       return [...new Set(state.summaries.map(issuerFromSummary).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    }
+
+    function availableThemes() {
+      return [...new Set(
+        state.summaries
+          .filter(summary => state.etfRegion === 'ALL' || classifyEtf(summary).region === state.etfRegion)
+          .map(summary => classifyEtf(summary).theme)
+          .filter(Boolean)
+      )].sort((a, b) => themeOrder(a) - themeOrder(b) || a.localeCompare(b));
+    }
+
+    function classifyEtf(summary) {
+      const name = displayEtfName(summary.etf_code);
+      return {
+        region: classifyRegion(name),
+        theme: classifyTheme(name),
+      };
+    }
+
+    function classifyRegion(name) {
+      const text = String(name || '');
+      if (includesAny(text, ['TDF', '채권혼합', '커버드콜채권혼합'])) return '혼합';
+      if (includesAny(text, ['미국', '글로벌', '차이나', '아시아', 'iShares'])) return '해외';
+      return '국내';
+    }
+
+    function classifyTheme(name) {
+      const text = String(name || '');
+      if (includesAny(text, ['TDF'])) return 'TDF';
+      if (includesAny(text, ['국고채', '금융채', '회사채', '종합채권', '단기변동', '머니마켓', 'CD', 'KOFR', 'SOFR', '하이일드', '투자등급', '인플레이션국채', '달러채권'])) return '채권/금리';
+      if (includesAny(text, ['금액티브', '금선물', '금현물', '원자재'])) return '원자재';
+      if (includesAny(text, ['커버드콜', '버퍼'])) return '커버드콜/버퍼';
+      if (includesAny(text, ['AI', '인공지능', '반도체', '테크', '금융테크', '혁신기술'])) return 'AI/테크';
+      if (includesAny(text, ['바이오'])) return '바이오';
+      if (includesAny(text, ['로봇', '휴머노이드', '자율주행'])) return '로봇/자율주행';
+      if (includesAny(text, ['신재생', '친환경', '조선해운'])) return '친환경';
+      if (includesAny(text, ['배당', '밸류업'])) return '배당/밸류업';
+      if (includesAny(text, ['S&P500', '나스닥100', '200액티브', '코스피', '코스닥'])) return '대표지수';
+      if (includesAny(text, ['소비', '컬처'])) return '소비/문화';
+      if (includesAny(text, ['우주', '방산'])) return '우주/방산';
+      if (includesAny(text, ['혁신', '이노베이션', '성장', '탑픽'])) return '성장/혁신';
+      return '종합/기타';
+    }
+
+    function includesAny(text, keywords) {
+      const upper = String(text || '').toUpperCase();
+      return keywords.some(keyword => upper.includes(String(keyword).toUpperCase()));
+    }
+
+    function themeOrder(theme) {
+      const index = ['대표지수', 'AI/테크', '바이오', '로봇/자율주행', '친환경', '배당/밸류업', '소비/문화', '우주/방산', '성장/혁신', '커버드콜/버퍼', '채권/금리', '원자재', 'TDF', '종합/기타'].indexOf(theme);
+      return index === -1 ? 999 : index;
     }
 
     function issuerFromSummary(summary) {
@@ -614,6 +724,13 @@
       renderSelected();
       renderRows();
       drawChart();
+    });
+    document.addEventListener('click', event => {
+      const picker = document.getElementById('tabs');
+      if (state.etfOpen && picker && !picker.contains(event.target)) {
+        state.etfOpen = false;
+        renderEtfPicker();
+      }
     });
 
     init();
