@@ -140,7 +140,7 @@
                   <th>종목명</th>
                   <th>수량</th>
                   <th>평가금액</th>
-                  <th>종가</th>
+                  <th>추정종가</th>
                   <th>비중</th>
                 </tr>
               </thead>
@@ -154,7 +154,7 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">선택 종목 통합 그래프</div>
-                <div class="muted">0, 빈값, 주말/휴장일은 그래프에서 제외됩니다.</div>
+                <div class="muted">종가 선택 시 KRX 실제 종가를 불러옵니다.</div>
               </div>
               <div class="panel-tools">
                 <label>기준
@@ -165,7 +165,6 @@
                     <option value="close_price">종가</option>
                   </select>
                 </label>
-                <label><input id="actualCloseToggle" type="checkbox" /> 실제 종가</label>
               </div>
             </div>
             <canvas id="chart" class="chart"></canvas>
@@ -183,7 +182,6 @@
                     <option value="weight">비중</option>
                     <option value="market_value">평가금액</option>
                     <option value="quantity">수량</option>
-                    <option value="close_price">종가</option>
                   </select>
                 </label>
               </div>
@@ -229,9 +227,7 @@
       holdingsByDate: new Map(),
       etfSearchComposing: false,
       holdingSearchComposing: false,
-      showActualClose: false,
-      marketDates: new Set(),
-      marketDateRanges: new Set(),
+      marketDatesByRange: new Map(),
     };
 
     async function init() {
@@ -495,7 +491,7 @@
             <td>${escapeHtml(row.name || '')}</td>
             <td>${fmtNum(row.quantity, 2)}</td>
             <td>${fmtNum(row.market_value)}</td>
-            <td>${formatMetricValue(metricValue(row, 'close_price'), 'close_price')}</td>
+            <td>${formatMetricValue(estimatedClosePrice(row), 'close_price')}</td>
             <td>${fmtPct(row.weight)}</td>
           </tr>`;
       }).join('') || '<tr><td colspan="6" class="empty">표시할 종목이 없습니다.</td></tr>';
@@ -541,6 +537,8 @@
           histories: {},
           closeHistory: [],
           closeError: '',
+          closeLoaded: false,
+          closeLoading: false,
         };
         state.selected.set(key, item);
         renderSelected();
@@ -562,7 +560,6 @@
       const history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
       item.histories[state.selectedEtf] = history.filter(row => matchesSecurity(item, row));
       await loadMarketDatesForHistory(currentHistory(item));
-      await loadCloseHistory(item);
       renderSelected();
       drawChart();
     }
@@ -573,23 +570,31 @@
       const start = dates[0];
       const end = dates[dates.length - 1];
       const rangeKey = `${start}:${end}`;
-      if (state.marketDateRanges.has(rangeKey)) return;
-      state.marketDateRanges.add(rangeKey);
+      if (state.marketDatesByRange.has(rangeKey)) return;
       const params = new URLSearchParams({ start, end });
       const marketDates = await fetch(`/api/market-dates?${params.toString()}`).then(r => r.json()).catch(() => []);
-      marketDates.forEach(date => state.marketDates.add(normalizeTradeDate(date)));
+      state.marketDatesByRange.set(rangeKey, new Set(marketDates.map(normalizeTradeDate).filter(Boolean)));
     }
 
     async function loadCloseHistory(item) {
+      if (item.closeLoaded || item.closeLoading) return;
       item.closeHistory = [];
       item.closeError = '';
+      item.closeLoading = true;
+      renderSelected();
       if (!isKrxTicker(item.ticker)) {
         item.closeError = '국내 6자리 코드 아님';
+        item.closeLoaded = true;
+        item.closeLoading = false;
+        renderSelected();
         return;
       }
       const history = currentHistory(item);
       if (!history.length) {
         item.closeError = '보유 이력 없음';
+        item.closeLoaded = true;
+        item.closeLoading = false;
+        renderSelected();
         return;
       }
       const dates = history.map(point => point.trade_date).filter(Boolean).sort();
@@ -607,7 +612,14 @@
         item.closeHistory = [];
         item.closeError = '종가 API 실패';
       }
-      item.closeHistory.forEach(point => state.marketDates.add(normalizeTradeDate(point.trade_date)));
+      item.closeLoaded = true;
+      item.closeLoading = false;
+      renderSelected();
+    }
+
+    async function loadCloseHistoriesForChart(items) {
+      await Promise.all(items.map(loadCloseHistory));
+      drawChart();
     }
 
     async function reloadSelectedHistories() {
@@ -759,30 +771,31 @@
         return;
       }
 
+      if (metric === 'close_price') {
+        const pendingCloseItems = series.filter(item => isKrxTicker(item.ticker) && !item.closeLoaded);
+        if (pendingCloseItems.length) {
+          ctx.fillStyle = '#667085';
+          ctx.fillText('실제 종가 로딩 중...', 24, 34);
+          const unloadStartedItems = pendingCloseItems.filter(item => !item.closeLoading);
+          if (unloadStartedItems.length) loadCloseHistoriesForChart(unloadStartedItems);
+          return;
+        }
+      }
+
       const weekdaySeries = series.map(item => ({
         ...item,
-        history: validMetricHistory(item.history, metric),
+        history: validMetricHistory(metric === 'close_price' ? item.closeHistory || [] : item.history, metric),
       })).filter(item => item.history.length);
       if (!weekdaySeries.length) {
         ctx.fillStyle = '#667085';
-        ctx.fillText('평일 거래 데이터가 없습니다.', 24, 34);
+        ctx.fillText('표시할 거래일 데이터가 없습니다.', 24, 34);
         return;
       }
 
-      const realCloseSeries = metric === 'close_price' && state.showActualClose
-        ? series.map(item => ({
-          ...item,
-          history: validMetricHistory(item.closeHistory || [], 'close_price'),
-        })).filter(item => item.history.length)
-        : [];
-      const dates = [...new Set([
-        ...weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)),
-        ...realCloseSeries.flatMap(item => item.history.map(point => point.trade_date)),
-      ])].sort();
+      const dates = [...new Set(weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
       const max = Math.max(
         1,
         ...weekdaySeries.flatMap(item => item.history.map(point => metricValue(point, metric))),
-        ...realCloseSeries.flatMap(item => item.history.map(point => metricValue(point, 'close_price'))),
       ) * 1.15;
       const pad = { left: 58, right: 22, top: 22, bottom: 44 };
       const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
@@ -813,15 +826,6 @@
           return point && hasMetricValue(point, metric) ? [x(index), y(metricValue(point, metric))] : null;
         });
         drawLine(ctx, coords, item.color);
-      });
-
-      realCloseSeries.forEach(item => {
-        const byDate = new Map(item.history.map(point => [point.trade_date, point]));
-        const coords = dates.map((date, index) => {
-          const point = byDate.get(date);
-          return point && hasMetricValue(point, 'close_price') ? [x(index), y(metricValue(point, 'close_price'))] : null;
-        });
-        drawLine(ctx, coords, item.color, { dash: [5, 4], radius: 1.8 });
       });
 
       ctx.fillStyle = '#667085';
@@ -897,10 +901,10 @@
       return day !== 0 && day !== 6;
     }
 
-    function isOpenMarketDate(value) {
+    function isOpenMarketDate(value, marketDates = null) {
       const normalized = normalizeTradeDate(value);
       if (!normalized || !isTradingWeekday(normalized)) return false;
-      return state.marketDates.size ? state.marketDates.has(normalized) : true;
+      return marketDates && marketDates.size ? marketDates.has(normalized) : true;
     }
 
     function hasMetricValue(point, metric) {
@@ -910,9 +914,14 @@
 
     function validMetricHistory(history, metric) {
       const seen = new Set();
-      return (history || [])
+      const normalizedHistory = (history || [])
         .map(point => ({ ...point, trade_date: normalizeTradeDate(point?.trade_date) }))
-        .filter(point => point.trade_date && isOpenMarketDate(point.trade_date) && hasMetricValue(point, metric))
+        .filter(point => point.trade_date);
+      const dates = normalizedHistory.map(point => point.trade_date).sort();
+      const rangeKey = dates.length ? `${dates[0]}:${dates[dates.length - 1]}` : '';
+      const marketDates = rangeKey ? state.marketDatesByRange.get(rangeKey) : null;
+      return normalizedHistory
+        .filter(point => isOpenMarketDate(point.trade_date, marketDates) && hasMetricValue(point, metric))
         .sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date)))
         .filter(point => {
           if (seen.has(point.trade_date)) return false;
@@ -984,7 +993,7 @@
     function metricValue(row, metric) {
       if (metric === 'close_price') {
         const close = Number(row?.close_price);
-        return Number.isFinite(close) && close > 0 ? close : estimatedClosePrice(row);
+        return Number.isFinite(close) && close > 0 ? close : 0;
       }
       const value = Number(row?.[metric]);
       return Number.isFinite(value) ? value : 0;
@@ -1041,9 +1050,7 @@
       state.holdingSearchComposing = false;
       renderRows();
     });
-    document.getElementById('chartMetric').addEventListener('change', drawChart);
-    document.getElementById('actualCloseToggle').addEventListener('change', event => {
-      state.showActualClose = event.target.checked;
+    document.getElementById('chartMetric').addEventListener('change', () => {
       drawChart();
     });
     document.getElementById('compareMetric').addEventListener('change', event => {
