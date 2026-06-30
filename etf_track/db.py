@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.sql import insert
 
-from etf_track.config import DATABASE_URL, SECURITY_SECTOR_PATH
+from etf_track.config import DATABASE_URL, SECURITY_MASTER_PATH, SECURITY_SECTOR_PATH
 
 metadata = MetaData()
 
@@ -129,6 +129,35 @@ def _is_missing(value: Any) -> bool:
         return False
 
 
+def _canonicalize_security_row(row: dict[str, Any]) -> None:
+    ticker = _clean_text(row.get("ticker"))
+    if not ticker:
+        return
+    meta = _security_master_by_ticker().get(ticker)
+    if not meta:
+        return
+    row["ticker"] = ticker
+    row["name"] = meta.get("name") or row["name"]
+    row["isin"] = meta.get("isin") or row["isin"]
+
+
+@lru_cache(maxsize=1)
+def _security_master_by_ticker() -> dict[str, dict[str, str]]:
+    if not SECURITY_MASTER_PATH.exists():
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    with SECURITY_MASTER_PATH.open(newline="", encoding="utf-8-sig") as handle:
+        for record in csv.DictReader(handle):
+            ticker = _clean_text(record.get("ticker"))
+            if not ticker:
+                continue
+            result[ticker] = {
+                "name": _clean_text(record.get("name")) or "",
+                "isin": _clean_text(record.get("isin")) or "",
+            }
+    return result
+
+
 def upsert_holdings(df: pd.DataFrame) -> int:
     if df.empty:
         return 0
@@ -146,6 +175,7 @@ def upsert_holdings(df: pd.DataFrame) -> int:
             "market_value": _clean_number(record.get("market_value")),
             "weight": _clean_number(record.get("weight")),
         }
+        _canonicalize_security_row(row)
         key = (row["trade_date"], row["etf_code"], row["ticker"])
         if key in by_key:
             existing = by_key[key]

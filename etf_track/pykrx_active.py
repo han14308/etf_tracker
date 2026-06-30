@@ -83,7 +83,7 @@ def download_pykrx_active_holdings(product: PykrxEtfProduct, trade_date: date) -
         return _empty_frame()
 
     frame = raw.reset_index()
-    ticker_col = _find_column(frame, ["\ud2f0\ucee4", "index", "\uc885\ubaa9\ucf54\ub4dc", "COMPST_ISU_CD"])
+    ticker_col = _find_column(frame, ["\uc885\ubaa9\ucf54\ub4dc", "COMPST_ISU_CD", "\ub2e8\ucd95\ucf54\ub4dc", "\ud2f0\ucee4", "index"])
     name_col = _find_column(frame, ["\uad6c\uc131\uc885\ubaa9\uba85", "\uc885\ubaa9\uba85", "COMPST_ISU_NM"])
     quantity_col = _find_column(frame, ["\uacc4\uc57d\uc218", "\uc218\ub7c9", "COMPST_ISU_CU1_SHRS"])
     value_col = _find_column(frame, ["\uae08\uc561", "\ud3c9\uac00\uae08\uc561", "VALU_AMT", "COMPST_AMT"])
