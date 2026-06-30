@@ -19,6 +19,20 @@ def fetch_close_history(
     return _fetch_close_history_cached(ticker, from_ymd, to_ymd)
 
 
+def fetch_market_dates(
+    start: date | None = None,
+    end: date | None = None,
+    ticker: str = "005930",
+) -> list[str]:
+    ticker = str(ticker or "005930").strip()
+    if not ticker.isdigit() or len(ticker) != 6:
+        ticker = "005930"
+
+    from_ymd = (start or date(2020, 1, 1)).strftime("%Y%m%d")
+    to_ymd = (end or date.today()).strftime("%Y%m%d")
+    return _fetch_market_dates_cached(ticker, from_ymd, to_ymd)
+
+
 @lru_cache(maxsize=2048)
 def _fetch_close_history_cached(ticker: str, from_ymd: str, to_ymd: str) -> list[dict[str, Any]]:
     try:
@@ -52,3 +66,21 @@ def _fetch_close_history_cached(ticker: str, from_ymd: str, to_ymd: str) -> list
             }
         )
     return rows
+
+
+@lru_cache(maxsize=512)
+def _fetch_market_dates_cached(ticker: str, from_ymd: str, to_ymd: str) -> list[str]:
+    try:
+        from pykrx import stock
+    except Exception:
+        return []
+
+    try:
+        frame = stock.get_market_ohlcv_by_date(from_ymd, to_ymd, ticker)
+    except Exception as exc:
+        print(f"MARKET_DATES_FETCH_FAILED {ticker} {from_ymd}-{to_ymd}: {exc}", flush=True)
+        return []
+
+    if frame is None or frame.empty:
+        return []
+    return [index.strftime("%Y-%m-%d") for index in frame.index]

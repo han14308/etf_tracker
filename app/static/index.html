@@ -44,6 +44,7 @@
     .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
     .panel-title { font-weight: 700; }
     .panel-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .panel-tools input[type="checkbox"] { width: 16px; height: 16px; padding: 0; vertical-align: middle; }
     .search { width: 240px; }
     .table-wrap { overflow: auto; max-height: 360px; }
     table { width: 100%; min-width: 860px; border-collapse: collapse; }
@@ -153,7 +154,7 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">선택 종목 통합 그래프</div>
-                <div class="muted">종가 기준은 추정 종가 실선, 실제 종가 점선입니다.</div>
+                <div class="muted">0, 빈값, 주말/휴장일은 그래프에서 제외됩니다.</div>
               </div>
               <div class="panel-tools">
                 <label>기준
@@ -164,6 +165,7 @@
                     <option value="close_price">종가</option>
                   </select>
                 </label>
+                <label><input id="actualCloseToggle" type="checkbox" /> 실제 종가</label>
               </div>
             </div>
             <canvas id="chart" class="chart"></canvas>
@@ -227,6 +229,9 @@
       holdingsByDate: new Map(),
       etfSearchComposing: false,
       holdingSearchComposing: false,
+      showActualClose: false,
+      marketDates: new Set(),
+      marketDateRanges: new Set(),
     };
 
     async function init() {
@@ -553,9 +558,23 @@
       if (item.isin) params.set('isin', item.isin);
       if (item.ticker) params.set('ticker', item.ticker);
       item.histories[state.selectedEtf] = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      await loadMarketDatesForHistory(currentHistory(item));
       await loadCloseHistory(item);
       renderSelected();
       drawChart();
+    }
+
+    async function loadMarketDatesForHistory(history) {
+      const dates = (history || []).map(point => normalizeTradeDate(point.trade_date)).filter(Boolean).sort();
+      if (!dates.length) return;
+      const start = dates[0];
+      const end = dates[dates.length - 1];
+      const rangeKey = `${start}:${end}`;
+      if (state.marketDateRanges.has(rangeKey)) return;
+      state.marketDateRanges.add(rangeKey);
+      const params = new URLSearchParams({ start, end });
+      const marketDates = await fetch(`/api/market-dates?${params.toString()}`).then(r => r.json()).catch(() => []);
+      marketDates.forEach(date => state.marketDates.add(normalizeTradeDate(date)));
     }
 
     async function loadCloseHistory(item) {
@@ -570,6 +589,7 @@
         end: dates[dates.length - 1],
       });
       item.closeHistory = await fetch(`/api/close-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      item.closeHistory.forEach(point => state.marketDates.add(normalizeTradeDate(point.trade_date)));
     }
 
     async function reloadSelectedHistories() {
@@ -718,7 +738,7 @@
 
       const weekdaySeries = series.map(item => ({
         ...item,
-        history: item.history.filter(point => isTradingWeekday(point.trade_date) && hasMetricValue(point, metric)),
+        history: validMetricHistory(item.history, metric),
       })).filter(item => item.history.length);
       if (!weekdaySeries.length) {
         ctx.fillStyle = '#667085';
@@ -726,10 +746,10 @@
         return;
       }
 
-      const realCloseSeries = metric === 'close_price'
+      const realCloseSeries = metric === 'close_price' && state.showActualClose
         ? series.map(item => ({
           ...item,
-          history: (item.closeHistory || []).filter(point => isTradingWeekday(point.trade_date) && hasMetricValue(point, 'close_price')),
+          history: validMetricHistory(item.closeHistory || [], 'close_price'),
         })).filter(item => item.history.length)
         : [];
       const dates = [...new Set([
@@ -827,14 +847,41 @@
     }
 
     function isTradingWeekday(value) {
-      const date = new Date(`${value}T00:00:00`);
+      const normalized = normalizeTradeDate(value);
+      if (!normalized) return false;
+      const [year, month, dayOfMonth] = normalized.split('-').map(Number);
+      const date = new Date(year, month - 1, dayOfMonth);
       const day = date.getDay();
       return day !== 0 && day !== 6;
+    }
+
+    function isOpenMarketDate(value) {
+      const normalized = normalizeTradeDate(value);
+      if (!normalized || !isTradingWeekday(normalized)) return false;
+      return state.marketDates.size ? state.marketDates.has(normalized) : true;
     }
 
     function hasMetricValue(point, metric) {
       const value = metricValue(point, metric);
       return Number.isFinite(value) && value > 0;
+    }
+
+    function validMetricHistory(history, metric) {
+      const seen = new Set();
+      return (history || [])
+        .map(point => ({ ...point, trade_date: normalizeTradeDate(point?.trade_date) }))
+        .filter(point => point.trade_date && isOpenMarketDate(point.trade_date) && hasMetricValue(point, metric))
+        .sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date)))
+        .filter(point => {
+          if (seen.has(point.trade_date)) return false;
+          seen.add(point.trade_date);
+          return true;
+        });
+    }
+
+    function normalizeTradeDate(value) {
+      const match = String(value || '').match(/^(\d{4})-?(\d{2})-?(\d{2})/);
+      return match ? `${match[1]}-${match[2]}-${match[3]}` : '';
     }
 
     function currentDate() {
@@ -953,6 +1000,10 @@
       renderRows();
     });
     document.getElementById('chartMetric').addEventListener('change', drawChart);
+    document.getElementById('actualCloseToggle').addEventListener('change', event => {
+      state.showActualClose = event.target.checked;
+      drawChart();
+    });
     document.getElementById('compareMetric').addEventListener('change', event => {
       state.compareMetric = event.target.value;
       const rows = state.holdingsByDate.get(currentDate());

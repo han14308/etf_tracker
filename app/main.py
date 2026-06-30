@@ -22,7 +22,7 @@ from etf_track.db import (
     fetch_summary,
     init_db,
 )
-from etf_track.prices import fetch_close_history
+from etf_track.prices import fetch_close_history, fetch_market_dates
 
 app = FastAPI(title="ETF Track")
 
@@ -96,6 +96,14 @@ def close_history(
     end: date | None = Query(default=None),
 ) -> list[dict]:
     return fetch_close_history(ticker=ticker, start=start, end=end)
+
+
+@app.get("/api/market-dates")
+def market_dates(
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+) -> list[str]:
+    return fetch_market_dates(start=start, end=end)
 
 
 @app.get("/api/products")
