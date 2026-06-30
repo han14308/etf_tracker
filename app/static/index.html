@@ -558,6 +558,7 @@
       const params = new URLSearchParams({ etf_code: state.selectedEtf });
       if (item.isin) params.set('isin', item.isin);
       if (item.ticker) params.set('ticker', item.ticker);
+      if (item.name) params.set('name', item.name);
       const history = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
       item.histories[state.selectedEtf] = history.filter(row => matchesSecurity(item, row));
       await loadMarketDatesForHistory(currentHistory(item));
@@ -865,18 +866,26 @@
     }
 
     function securityKey(row) {
-      return row.ticker || row.isin || row.name;
+      return row?.isin || (isSyntheticTicker(row?.ticker) ? row.name : row?.ticker) || row?.name;
     }
 
     function matchesSecurity(item, row) {
-      const itemTicker = String(item?.ticker || '').trim();
-      const rowTicker = String(row?.ticker || '').trim();
-      if (itemTicker && rowTicker) return itemTicker === rowTicker;
       const itemIsin = String(item?.isin || '').trim();
       const rowIsin = String(row?.isin || '').trim();
       if (itemIsin && rowIsin) return itemIsin === rowIsin;
+      const itemTicker = String(item?.ticker || '').trim();
+      const rowTicker = String(row?.ticker || '').trim();
+      if (isSyntheticTicker(itemTicker) || isSyntheticTicker(rowTicker)) {
+        return String(item?.name || '').trim() === String(row?.name || '').trim();
+      }
+      if (itemTicker && rowTicker) return itemTicker === rowTicker;
       if (!rowTicker && !rowIsin) return true;
       return securityKey(item) === securityKey(row);
+    }
+
+    function isSyntheticTicker(value) {
+      const text = String(value || '').trim();
+      return /^\d{6}$/.test(text) && Number(text) < 1000;
     }
 
     function isTradingWeekday(value) {
@@ -989,7 +998,7 @@
     }
 
     function isKrxTicker(value) {
-      return /^\d{6}$/.test(String(value || ''));
+      return /^\d{6}$/.test(String(value || '')) && !isSyntheticTicker(value);
     }
 
     function shortNumber(value) {

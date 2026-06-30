@@ -131,12 +131,13 @@ def _is_missing(value: Any) -> bool:
 
 def _canonicalize_security_row(row: dict[str, Any]) -> None:
     ticker = _clean_text(row.get("ticker"))
-    if not ticker:
-        return
-    meta = _security_master_by_ticker().get(ticker)
+    name = _clean_text(row.get("name"))
+    meta = _security_master_by_ticker().get(ticker or "") if ticker else None
+    if not meta and name:
+        meta = _security_master_by_name().get(name)
     if not meta:
         return
-    row["ticker"] = ticker
+    row["ticker"] = meta.get("ticker") or ticker or row.get("ticker")
     row["name"] = meta.get("name") or row["name"]
     row["isin"] = meta.get("isin") or row["isin"]
 
@@ -152,10 +153,16 @@ def _security_master_by_ticker() -> dict[str, dict[str, str]]:
             if not ticker:
                 continue
             result[ticker] = {
+                "ticker": ticker,
                 "name": _clean_text(record.get("name")) or "",
                 "isin": _clean_text(record.get("isin")) or "",
             }
     return result
+
+
+@lru_cache(maxsize=1)
+def _security_master_by_name() -> dict[str, dict[str, str]]:
+    return {meta["name"]: meta for meta in _security_master_by_ticker().values() if meta.get("name")}
 
 
 def upsert_holdings(df: pd.DataFrame) -> int:
@@ -316,6 +323,7 @@ def fetch_dates() -> list[date]:
 
 def _row_to_dict(row: Any) -> dict:
     data = dict(row._mapping)
+    _canonicalize_security_row(data)
     for key, value in list(data.items()):
         if isinstance(value, Decimal):
             data[key] = float(value)
@@ -340,22 +348,39 @@ def fetch_holding_history(
     etf_code: str,
     ticker: str | None = None,
     isin: str | None = None,
+    name: str | None = None,
 ) -> list[dict]:
     init_db()
     ticker = _clean_text(ticker)
     isin = _clean_text(isin)
-    if not etf_code or (not ticker and not isin):
+    name = _clean_text(name)
+    if not etf_code or (not ticker and not isin and not name):
         return []
 
     stmt = select(holdings).where(holdings.c.etf_code == etf_code)
-    if ticker:
+    if isin:
+        stmt = stmt.where(holdings.c.isin == isin)
+    elif ticker and not _is_synthetic_ticker(ticker):
         stmt = stmt.where(holdings.c.ticker == ticker)
     else:
-        stmt = stmt.where(holdings.c.isin == isin)
+        stmt = stmt.where(holdings.c.name == name)
     stmt = stmt.order_by(holdings.c.trade_date.asc())
 
     with get_engine().connect() as conn:
-        return [_row_to_dict(row) for row in conn.execute(stmt)]
+        rows = [_row_to_dict(row) for row in conn.execute(stmt)]
+        if not rows and name:
+            fallback = (
+                select(holdings)
+                .where(holdings.c.etf_code == etf_code, holdings.c.name == name)
+                .order_by(holdings.c.trade_date.asc())
+            )
+            rows = [_row_to_dict(row) for row in conn.execute(fallback)]
+        return rows
+
+
+def _is_synthetic_ticker(ticker: str | None) -> bool:
+    text = _clean_text(ticker)
+    return bool(text and text.isdigit() and len(text) == 6 and int(text) < 1000)
 
 
 def fetch_summary(start: date | None = None, end: date | None = None) -> list[dict]:

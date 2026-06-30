@@ -85,8 +85,9 @@ def holding_history(
     etf_code: str = Query(default=""),
     ticker: str | None = Query(default=None),
     isin: str | None = Query(default=None),
+    name: str | None = Query(default=None),
 ) -> list[dict]:
-    return fetch_holding_history(etf_code=etf_code, ticker=ticker, isin=isin)
+    return fetch_holding_history(etf_code=etf_code, ticker=ticker, isin=isin, name=name)
 
 
 @app.get("/api/close-history")
