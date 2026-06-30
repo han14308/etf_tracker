@@ -12,7 +12,14 @@ if str(ROOT_DIR) not in sys.path:
 from etf_track.calendar import recent_weekdays
 from etf_track.config import ACTIVE_ETF_ISSUERS, DATABASE_URL
 from etf_track.db import clear_etf_data
-from etf_track.pykrx_active import collect_pykrx_active_for_date, list_pykrx_active_etfs
+from etf_track.pykrx_active import (
+    KrxAuthRequiredError,
+    PykrxEtfProduct,
+    collect_pykrx_active_for_date,
+    download_pykrx_active_holdings,
+    list_pykrx_active_etfs,
+    validate_pykrx_active_access,
+)
 
 
 def main() -> None:
@@ -42,33 +49,58 @@ def main() -> None:
             "Fix .env or add --allow-sqlite if you really want local data."
         )
 
+    dates = recent_weekdays(args.days)
+
     print(f"DATABASE_URL={_masked_database_url(DATABASE_URL)}", flush=True)
     print(f"ALLOWED_ISSUERS={', '.join(ACTIVE_ETF_ISSUERS)}", flush=True)
+    preflight_date, preflight_products = _find_preflight_date(dates)
+
     print("RESET etf_holdings, etf_products, krx_rows", flush=True)
     clear_etf_data()
 
-    dates = recent_weekdays(args.days)
     total = 0
     for trade_date in dates:
-        try:
-            products = list_pykrx_active_etfs(trade_date, issuers=ACTIVE_ETF_ISSUERS)
-            print(
-                f"PRODUCTS {trade_date.isoformat()} count={len(products)} "
-                f"names={', '.join(product.name for product in products[:10])}",
-                flush=True,
-            )
-            count = collect_pykrx_active_for_date(
-                trade_date,
-                pause_seconds=args.pause,
-                issuers=ACTIVE_ETF_ISSUERS,
-            )
-            total += count
-            print(f"OK {trade_date.isoformat()} rows={count}", flush=True)
-        except Exception as exc:
-            print(f"SKIP {trade_date.isoformat()} {exc}", flush=True)
+        products = (
+            preflight_products
+            if trade_date == preflight_date
+            else list_pykrx_active_etfs(trade_date, issuers=ACTIVE_ETF_ISSUERS)
+        )
+        print(
+            f"PRODUCTS {trade_date.isoformat()} count={len(products)} "
+            f"names={', '.join(product.name for product in products[:10])}",
+            flush=True,
+        )
+        count = collect_pykrx_active_for_date(
+            trade_date,
+            pause_seconds=args.pause,
+            issuers=ACTIVE_ETF_ISSUERS,
+            products=products,
+        )
+        total += count
+        print(f"OK {trade_date.isoformat()} rows={count}", flush=True)
         time.sleep(2)
 
     print(f"Backfill complete rows={total}", flush=True)
+
+
+def _find_preflight_date(dates) -> tuple[object, list[PykrxEtfProduct]]:
+    errors = []
+    for trade_date in reversed(dates):
+        try:
+            print(f"PYKRX_PREFLIGHT {trade_date.isoformat()}", flush=True)
+            products = validate_pykrx_active_access(trade_date, issuers=ACTIVE_ETF_ISSUERS)
+            _validate_holdings_preflight(trade_date, products)
+            return trade_date, products
+        except Exception as exc:
+            if _has_auth_required_error(exc):
+                raise SystemExit(str(exc)) from exc
+            errors.append(f"{trade_date.isoformat()}: {exc}")
+            print(f"PYKRX_PREFLIGHT_SKIP {trade_date.isoformat()} {exc}", flush=True)
+    raise SystemExit(
+        "PyKRX preflight failed before reset for every requested date. "
+        "Recent failures: "
+        + " | ".join(errors[:5])
+    )
 
 
 def _masked_database_url(value: str) -> str:
@@ -78,6 +110,38 @@ def _masked_database_url(value: str) -> str:
     user_part, host_part = rest.rsplit("@", 1)
     user = user_part.split(":", 1)[0]
     return f"{scheme}://{user}:***@{host_part}"
+
+
+def _has_auth_required_error(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, KrxAuthRequiredError):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _validate_holdings_preflight(trade_date, products: list[PykrxEtfProduct]) -> None:
+    errors = []
+    for product in products[:10]:
+        try:
+            frame = download_pykrx_active_holdings(product, trade_date)
+            if not frame.empty:
+                print(
+                    f"PYKRX_PDF_PREFLIGHT {trade_date.isoformat()} {product.etf_code} rows={len(frame)}",
+                    flush=True,
+                )
+                return
+            errors.append(f"{product.etf_code}: empty")
+        except KrxAuthRequiredError:
+            raise
+        except Exception as exc:
+            errors.append(f"{product.etf_code}: {exc}")
+    raise RuntimeError(
+        "PyKRX PDF preflight failed before reset. "
+        "No ETF holdings were downloadable for the first 10 products: "
+        + "; ".join(errors)
+    )
 
 
 if __name__ == "__main__":

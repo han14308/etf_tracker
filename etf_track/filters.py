@@ -5,6 +5,9 @@ ACTIVE_KEYWORD = "\uc561\ud2f0\ube0c"
 NON_EQUITY_KEYWORDS = [
     "\ucc44\uad8c",
     "\uad6d\ucc44",
+    "\uae08\uc735\ucc44",
+    "\uc740\ud589\ucc44",
+    "\ud2b9\uc218\uc740\ud589\ucc44",
     "\ud68c\uc0ac\ucc44",
     "\ud1b5\uc548\ucc44",
     "\ub2e8\uae30\ucc44",
@@ -23,6 +26,7 @@ NON_EQUITY_KEYWORDS = [
     "\uae08\uc120\ubb3c",
     "\uae08\ud604\ubb3c",
     "\uace8\ub4dc",
+    "\uc740\uc561\ud2f0\ube0c",
     "\uc740\uc120\ubb3c",
     "\uad6c\ub9ac",
     "\uc6d0\uc720",
