@@ -222,6 +222,8 @@
       compareSecurity: null,
       compareMetric: 'weight',
       holdingsByDate: new Map(),
+      etfSearchComposing: false,
+      holdingSearchComposing: false,
     };
 
     async function init() {
@@ -302,11 +304,11 @@
         const name = displayEtfName(summary.etf_code);
         const issuer = issuerFromSummary(summary);
         const category = classifyEtf(summary);
-        const haystack = `${name} ${summary.etf_code} ${issuer} ${category.region} ${category.theme}`.toLowerCase();
+        const haystack = `${name} ${summary.etf_code} ${issuer} ${category.region} ${category.sectors.join(' ')}`.toLowerCase();
         return (
           (state.etfIssuer === 'ALL' || issuer === state.etfIssuer) &&
           (state.etfRegion === 'ALL' || category.region === state.etfRegion) &&
-          (state.etfTheme === 'ALL' || category.theme === state.etfTheme) &&
+          (state.etfTheme === 'ALL' || category.sectors.includes(state.etfTheme)) &&
           (!query || haystack.includes(query))
         );
       });
@@ -337,7 +339,7 @@
           <button class="etf-option${active}" data-etf="${escapeHtml(summary.etf_code)}">
             <span>
               <span class="etf-name">${escapeHtml(shortName(name, 34))}</span>
-              <span class="etf-meta">${escapeHtml(summary.etf_code)} · ${escapeHtml(category.region)} · ${escapeHtml(category.theme)} · ${escapeHtml(issuerFromSummary(summary))}</span>
+              <span class="etf-meta">${escapeHtml(summary.etf_code)} · ${escapeHtml(category.region)} · ${escapeHtml(category.sectors.join('/'))} · ${escapeHtml(issuerFromSummary(summary))}</span>
             </span>
             <span class="etf-badge">${fmtNum(summary.holding_count)}개</span>
           </button>`;
@@ -347,6 +349,16 @@
       const search = document.getElementById('etfSearch');
       if (search) {
         search.addEventListener('input', event => {
+          if (state.etfSearchComposing || event.isComposing) return;
+          state.etfQuery = event.target.value;
+          renderEtfPicker();
+          document.getElementById('etfSearch')?.focus();
+        });
+        search.addEventListener('compositionstart', () => {
+          state.etfSearchComposing = true;
+        });
+        search.addEventListener('compositionend', event => {
+          state.etfSearchComposing = false;
           state.etfQuery = event.target.value;
           renderEtfPicker();
           document.getElementById('etfSearch')?.focus();
@@ -385,16 +397,18 @@
       return [...new Set(
         state.summaries
           .filter(summary => state.etfRegion === 'ALL' || classifyEtf(summary).region === state.etfRegion)
-          .map(summary => classifyEtf(summary).theme)
+          .flatMap(summary => classifyEtf(summary).sectors)
           .filter(Boolean)
       )].sort((a, b) => themeOrder(a) - themeOrder(b) || a.localeCompare(b));
     }
 
     function classifyEtf(summary) {
       const name = displayEtfName(summary.etf_code);
+      const sectors = classifySectors(name);
       return {
         region: classifyRegion(name),
-        theme: classifyTheme(name),
+        sectors,
+        theme: sectors.join('/'),
       };
     }
 
@@ -405,22 +419,17 @@
       return '국내';
     }
 
-    function classifyTheme(name) {
+    function classifySectors(name) {
       const text = String(name || '');
-      if (includesAny(text, ['TDF'])) return 'TDF';
-      if (includesAny(text, ['국고채', '금융채', '회사채', '종합채권', '단기변동', '머니마켓', 'CD', 'KOFR', 'SOFR', '하이일드', '투자등급', '인플레이션국채', '달러채권'])) return '채권/금리';
-      if (includesAny(text, ['금액티브', '금선물', '금현물', '원자재'])) return '원자재';
-      if (includesAny(text, ['커버드콜', '버퍼'])) return '커버드콜/버퍼';
-      if (includesAny(text, ['AI', '인공지능', '반도체', '테크', '금융테크', '혁신기술'])) return 'AI/테크';
-      if (includesAny(text, ['바이오'])) return '바이오';
-      if (includesAny(text, ['로봇', '휴머노이드', '자율주행'])) return '로봇/자율주행';
-      if (includesAny(text, ['신재생', '친환경', '조선해운'])) return '친환경';
-      if (includesAny(text, ['배당', '밸류업'])) return '배당/밸류업';
-      if (includesAny(text, ['S&P500', '나스닥100', '200액티브', '코스피', '코스닥'])) return '대표지수';
-      if (includesAny(text, ['소비', '컬처'])) return '소비/문화';
-      if (includesAny(text, ['우주', '방산'])) return '우주/방산';
-      if (includesAny(text, ['혁신', '이노베이션', '성장', '탑픽'])) return '성장/혁신';
-      return '종합/기타';
+      const sectors = [];
+      if (includesAny(text, ['AI', '인공지능'])) sectors.push('AI');
+      if (includesAny(text, ['반도체', '칩', 'CHIP', '메모리', 'HBM'])) sectors.push('반도체');
+      if (includesAny(text, ['테크', '기술', '나스닥', 'NASDAQ', '혁신기술', '금융테크', '핀테크', '소프트웨어', '인터넷', '플랫폼'])) sectors.push('테크');
+      if (includesAny(text, ['배당', '고배당', '월배당', '리츠'])) sectors.push('배당');
+      if (includesAny(text, ['밸류업', '가치주', '저평가', '주주환원'])) sectors.push('밸류업');
+      if (includesAny(text, ['채권', '국고채', '금융채', '회사채', '종합채권', '하이일드', '투자등급', '달러채권', '인플레이션국채'])) sectors.push('채권');
+      if (includesAny(text, ['금리', '단기', '머니마켓', 'CD', 'KOFR', 'SOFR', '파킹', '초단기'])) sectors.push('금리');
+      return sectors.length ? [...new Set(sectors)] : ['기타'];
     }
 
     function includesAny(text, keywords) {
@@ -429,7 +438,7 @@
     }
 
     function themeOrder(theme) {
-      const index = ['대표지수', 'AI/테크', '바이오', '로봇/자율주행', '친환경', '배당/밸류업', '소비/문화', '우주/방산', '성장/혁신', '커버드콜/버퍼', '채권/금리', '원자재', 'TDF', '종합/기타'].indexOf(theme);
+      const index = ['AI', '반도체', '테크', '배당', '밸류업', '채권', '금리', '기타'].indexOf(theme);
       return index === -1 ? 999 : index;
     }
 
@@ -575,7 +584,7 @@
         return;
       }
       const selectedSummary = state.summaries.find(summary => summary.etf_code === state.selectedEtf);
-      const selectedCategory = selectedSummary ? classifyEtf(selectedSummary) : { region: '전체', theme: '전체' };
+      const selectedCategory = selectedSummary ? classifyEtf(selectedSummary) : { region: '전체', sectors: ['전체'], theme: '전체' };
       sub.textContent = `${security.name || security.ticker || ''} · ${selectedCategory.region}/${selectedCategory.theme}`;
       if (loading || !allHoldings) {
         panel.innerHTML = '<div class="empty">같은 섹터 ETF 비교 계산 중...</div>';
@@ -584,7 +593,7 @@
 
       const peers = state.summaries.filter(summary => {
         const category = classifyEtf(summary);
-        return category.region === selectedCategory.region && category.theme === selectedCategory.theme;
+        return category.region === selectedCategory.region && category.sectors.some(sector => selectedCategory.sectors.includes(sector));
       });
       const key = securityKey(security);
       const byEtf = new Map();
@@ -723,7 +732,10 @@
 
       weekdaySeries.forEach(item => {
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
-        const coords = dates.map((date, index) => [x(index), y(byDate.get(date)?.[metric] || 0)]);
+        const coords = dates.map((date, index) => {
+          const point = byDate.get(date);
+          return point ? [x(index), y(point[metric] || 0)] : null;
+        });
         drawLine(ctx, coords, item.color);
       });
 
@@ -743,10 +755,23 @@
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      coords.forEach(([px, py], index) => index ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
+      let drawing = false;
+      coords.forEach(point => {
+        if (!point) {
+          drawing = false;
+          return;
+        }
+        const [px, py] = point;
+        if (drawing) {
+          ctx.lineTo(px, py);
+        } else {
+          ctx.moveTo(px, py);
+          drawing = true;
+        }
+      });
       ctx.stroke();
       ctx.fillStyle = color;
-      coords.forEach(([px, py]) => {
+      coords.filter(Boolean).forEach(([px, py]) => {
         ctx.beginPath();
         ctx.arc(px, py, 2.5, 0, Math.PI * 2);
         ctx.fill();
@@ -838,7 +863,18 @@
       loadEtfTabs();
     });
     document.getElementById('dateInput').addEventListener('change', loadEtfTabs);
-    document.getElementById('search').addEventListener('input', renderRows);
+    const holdingSearch = document.getElementById('search');
+    holdingSearch.addEventListener('input', event => {
+      if (state.holdingSearchComposing || event.isComposing) return;
+      renderRows();
+    });
+    holdingSearch.addEventListener('compositionstart', () => {
+      state.holdingSearchComposing = true;
+    });
+    holdingSearch.addEventListener('compositionend', () => {
+      state.holdingSearchComposing = false;
+      renderRows();
+    });
     document.getElementById('chartMetric').addEventListener('change', drawChart);
     document.getElementById('compareMetric').addEventListener('change', event => {
       state.compareMetric = event.target.value;
