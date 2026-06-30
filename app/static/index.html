@@ -139,6 +139,7 @@
                   <th>종목명</th>
                   <th>수량</th>
                   <th>평가금액</th>
+                  <th>종가</th>
                   <th>비중</th>
                 </tr>
               </thead>
@@ -152,7 +153,7 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">선택 종목 통합 그래프</div>
-                <div class="muted">체크된 종목만 한 그래프에 표시됩니다.</div>
+                <div class="muted">종가 기준은 추정 종가 실선, 실제 종가 점선입니다.</div>
               </div>
               <div class="panel-tools">
                 <label>기준
@@ -160,6 +161,7 @@
                     <option value="weight">비중</option>
                     <option value="market_value">평가금액</option>
                     <option value="quantity">수량</option>
+                    <option value="close_price">종가</option>
                   </select>
                 </label>
               </div>
@@ -179,6 +181,7 @@
                     <option value="weight">비중</option>
                     <option value="market_value">평가금액</option>
                     <option value="quantity">수량</option>
+                    <option value="close_price">종가</option>
                   </select>
                 </label>
               </div>
@@ -487,9 +490,10 @@
             <td>${escapeHtml(row.name || '')}</td>
             <td>${fmtNum(row.quantity, 2)}</td>
             <td>${fmtNum(row.market_value)}</td>
+            <td>${formatMetricValue(metricValue(row, 'close_price'), 'close_price')}</td>
             <td>${fmtPct(row.weight)}</td>
           </tr>`;
-      }).join('') || '<tr><td colspan="5" class="empty">표시할 종목이 없습니다.</td></tr>';
+      }).join('') || '<tr><td colspan="6" class="empty">표시할 종목이 없습니다.</td></tr>';
 
       document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
         tr.addEventListener('click', async () => {
@@ -530,6 +534,7 @@
           checked: true,
           color: colors[state.selected.size % colors.length],
           histories: {},
+          closeHistory: [],
         };
         state.selected.set(key, item);
         renderSelected();
@@ -548,8 +553,23 @@
       if (item.isin) params.set('isin', item.isin);
       if (item.ticker) params.set('ticker', item.ticker);
       item.histories[state.selectedEtf] = await fetch(`/api/holding-history?${params.toString()}`).then(r => r.json()).catch(() => []);
+      await loadCloseHistory(item);
       renderSelected();
       drawChart();
+    }
+
+    async function loadCloseHistory(item) {
+      item.closeHistory = [];
+      if (!isKrxTicker(item.ticker)) return;
+      const history = currentHistory(item);
+      if (!history.length) return;
+      const dates = history.map(point => point.trade_date).filter(Boolean).sort();
+      const params = new URLSearchParams({
+        ticker: item.ticker,
+        start: dates[0],
+        end: dates[dates.length - 1],
+      });
+      item.closeHistory = await fetch(`/api/close-history?${params.toString()}`).then(r => r.json()).catch(() => []);
     }
 
     async function reloadSelectedHistories() {
@@ -606,7 +626,7 @@
         return {
           etf_code: summary.etf_code,
           name: displayEtfName(summary.etf_code),
-          value: Number(holding[metric] || 0),
+          value: metricValue(holding, metric),
           holding,
         };
       }).sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
@@ -652,7 +672,7 @@
           <input type="checkbox" data-action="toggle" data-key="${escapeHtml(item.key)}" ${item.checked ? 'checked' : ''} />
           <div>
             <div class="selected-name" style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</div>
-            <div class="selected-meta">${escapeHtml(item.ticker || '')} · ${fmtNum(currentHistory(item).length)}일</div>
+            <div class="selected-meta">${escapeHtml(item.ticker || '')} · 보유 ${fmtNum(currentHistory(item).length)}일 · 종가 ${fmtNum(item.closeHistory?.length || 0)}일</div>
           </div>
           <button class="remove" data-action="remove" data-key="${escapeHtml(item.key)}">삭제</button>
         </div>
@@ -706,8 +726,21 @@
         return;
       }
 
-      const dates = [...new Set(weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
-      const max = Math.max(1, ...weekdaySeries.flatMap(item => item.history.map(point => Number(point[metric] || 0)))) * 1.15;
+      const realCloseSeries = metric === 'close_price'
+        ? series.map(item => ({
+          ...item,
+          history: (item.closeHistory || []).filter(point => isTradingWeekday(point.trade_date) && hasMetricValue(point, 'close_price')),
+        })).filter(item => item.history.length)
+        : [];
+      const dates = [...new Set([
+        ...weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)),
+        ...realCloseSeries.flatMap(item => item.history.map(point => point.trade_date)),
+      ])].sort();
+      const max = Math.max(
+        1,
+        ...weekdaySeries.flatMap(item => item.history.map(point => metricValue(point, metric))),
+        ...realCloseSeries.flatMap(item => item.history.map(point => metricValue(point, 'close_price'))),
+      ) * 1.15;
       const pad = { left: 58, right: 22, top: 22, bottom: 44 };
       const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
       const y = value => height - pad.bottom - (Number(value || 0) / max) * (height - pad.top - pad.bottom);
@@ -722,7 +755,7 @@
 
       [0, max / 2, max].forEach(value => {
         ctx.fillStyle = '#667085';
-        ctx.fillText(metric === 'weight' ? `${value.toFixed(1)}%` : shortNumber(value), 8, y(value) + 4);
+        ctx.fillText(chartAxisLabel(value, metric), 8, y(value) + 4);
         ctx.strokeStyle = '#eef2f6';
         ctx.beginPath();
         ctx.moveTo(pad.left, y(value));
@@ -734,9 +767,18 @@
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
         const coords = dates.map((date, index) => {
           const point = byDate.get(date);
-          return point && hasMetricValue(point, metric) ? [x(index), y(point[metric])] : null;
+          return point && hasMetricValue(point, metric) ? [x(index), y(metricValue(point, metric))] : null;
         });
         drawLine(ctx, coords, item.color);
+      });
+
+      realCloseSeries.forEach(item => {
+        const byDate = new Map(item.history.map(point => [point.trade_date, point]));
+        const coords = dates.map((date, index) => {
+          const point = byDate.get(date);
+          return point && hasMetricValue(point, 'close_price') ? [x(index), y(metricValue(point, 'close_price'))] : null;
+        });
+        drawLine(ctx, coords, item.color, { dash: [5, 4], radius: 1.8 });
       });
 
       ctx.fillStyle = '#667085';
@@ -751,9 +793,10 @@
       });
     }
 
-    function drawLine(ctx, coords, color) {
+    function drawLine(ctx, coords, color, options = {}) {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
+      ctx.setLineDash(options.dash || []);
       ctx.beginPath();
       let drawing = false;
       coords.forEach(point => {
@@ -770,10 +813,11 @@
         }
       });
       ctx.stroke();
+      ctx.setLineDash([]);
       ctx.fillStyle = color;
       coords.filter(Boolean).forEach(([px, py]) => {
         ctx.beginPath();
-        ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+        ctx.arc(px, py, options.radius || 2.5, 0, Math.PI * 2);
         ctx.fill();
       });
     }
@@ -789,7 +833,7 @@
     }
 
     function hasMetricValue(point, metric) {
-      const value = Number(point?.[metric]);
+      const value = metricValue(point, metric);
       return Number.isFinite(value) && value > 0;
     }
 
@@ -837,7 +881,35 @@
     function formatMetricValue(value, metric) {
       if (metric === 'weight') return fmtPct(value);
       if (metric === 'market_value') return fmtWon(value);
+      if (metric === 'close_price') return value ? `${fmtNum(value, 2)}원` : '-';
       return fmtNum(value, 2);
+    }
+
+    function chartAxisLabel(value, metric) {
+      if (metric === 'weight') return `${value.toFixed(1)}%`;
+      if (metric === 'market_value') return shortNumber(value);
+      if (metric === 'close_price') return shortNumber(value);
+      return shortNumber(value);
+    }
+
+    function metricValue(row, metric) {
+      if (metric === 'close_price') {
+        const close = Number(row?.close_price);
+        return Number.isFinite(close) && close > 0 ? close : estimatedClosePrice(row);
+      }
+      const value = Number(row?.[metric]);
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    function estimatedClosePrice(row) {
+      const marketValue = Number(row?.market_value);
+      const quantity = Number(row?.quantity);
+      if (!Number.isFinite(marketValue) || !Number.isFinite(quantity) || quantity <= 0) return 0;
+      return marketValue / quantity;
+    }
+
+    function isKrxTicker(value) {
+      return /^\d{6}$/.test(String(value || ''));
     }
 
     function shortNumber(value) {
