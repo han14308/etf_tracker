@@ -422,9 +422,9 @@
     function classifySectors(name) {
       const text = String(name || '');
       const sectors = [];
-      if (includesAny(text, ['AI', '인공지능'])) sectors.push('AI');
-      if (includesAny(text, ['반도체', '칩', 'CHIP', '메모리', 'HBM'])) sectors.push('반도체');
-      if (includesAny(text, ['테크', '기술', '나스닥', 'NASDAQ', '혁신기술', '금융테크', '핀테크', '소프트웨어', '인터넷', '플랫폼'])) sectors.push('테크');
+      if (includesAny(text, ['AI', '인공지능', '에이아이'])) sectors.push('AI');
+      if (includesAny(text, ['반도체', '세미컨덕터', 'SEMICONDUCTOR', '칩', 'CHIP', '메모리', 'HBM', 'SOX', '필라델피아', '엔비디아', 'NVIDIA', 'TSMC'])) sectors.push('반도체');
+      if (includesAny(text, ['테크', 'TECH', '기술', '나스닥', 'NASDAQ', '혁신기술', '금융테크', '핀테크', '소프트웨어', '인터넷', '플랫폼'])) sectors.push('테크');
       if (includesAny(text, ['배당', '고배당', '월배당', '리츠'])) sectors.push('배당');
       if (includesAny(text, ['밸류업', '가치주', '저평가', '주주환원'])) sectors.push('밸류업');
       if (includesAny(text, ['채권', '국고채', '금융채', '회사채', '종합채권', '하이일드', '투자등급', '달러채권', '인플레이션국채'])) sectors.push('채권');
@@ -698,7 +698,7 @@
 
       const weekdaySeries = series.map(item => ({
         ...item,
-        history: item.history.filter(point => isTradingWeekday(point.trade_date)),
+        history: item.history.filter(point => isTradingWeekday(point.trade_date) && hasMetricValue(point, metric)),
       })).filter(item => item.history.length);
       if (!weekdaySeries.length) {
         ctx.fillStyle = '#667085';
@@ -734,7 +734,7 @@
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
         const coords = dates.map((date, index) => {
           const point = byDate.get(date);
-          return point ? [x(index), y(point[metric] || 0)] : null;
+          return point && hasMetricValue(point, metric) ? [x(index), y(point[metric])] : null;
         });
         drawLine(ctx, coords, item.color);
       });
@@ -786,6 +786,11 @@
       const date = new Date(`${value}T00:00:00`);
       const day = date.getDay();
       return day !== 0 && day !== 6;
+    }
+
+    function hasMetricValue(point, metric) {
+      const value = Number(point?.[metric]);
+      return Number.isFinite(value) && value > 0;
     }
 
     function currentDate() {
