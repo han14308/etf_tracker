@@ -45,14 +45,17 @@
     .panel-title { font-weight: 700; }
     .panel-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .search { width: 240px; }
-    .table-wrap { overflow: auto; max-height: 620px; }
+    .table-wrap { overflow: auto; max-height: 360px; }
     table { width: 100%; min-width: 860px; border-collapse: collapse; }
-    th, td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 13px; white-space: nowrap; }
+    th, td { padding: 8px 12px; border-bottom: 1px solid #edf0f2; text-align: right; font-size: 13px; white-space: nowrap; }
     th { position: sticky; top: 0; background: #f2f4f7; color: #344054; z-index: 1; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
     tbody tr { cursor: pointer; }
     tbody tr:hover { background: #f8fbff; }
     tbody tr.selected { background: #eef6ff; }
+    .graph-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+    .graph-grid .panel { display: flex; flex-direction: column; min-height: 430px; }
+    .graph-grid .panel + .panel { margin-top: 0; }
     .chart { width: 100%; height: 340px; display: block; background: #fff; }
     .selected-list { max-height: 460px; overflow: auto; }
     .selected-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
@@ -70,7 +73,8 @@
     .compare-stat:last-child { border-right: 0; }
     .compare-label { color: var(--muted); font-size: 12px; }
     .compare-value { margin-top: 5px; font-size: 18px; font-weight: 700; }
-    .compare-bars { padding: 10px 12px 14px; max-height: 360px; overflow: auto; }
+    #comparePanel { flex: 1; overflow: hidden; }
+    .compare-bars { padding: 10px 12px 14px; max-height: 260px; overflow: auto; }
     .compare-bar { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(120px, 1.4fr) 72px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid #edf0f2; }
     .compare-bar:last-child { border-bottom: 0; }
     .compare-etf { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
@@ -83,6 +87,7 @@
       main, header { padding-left: 16px; padding-right: 16px; }
       .grid { grid-template-columns: 1fr 1fr; }
       .layout { grid-template-columns: 1fr; }
+      .graph-grid { grid-template-columns: 1fr; }
       .search { width: 100%; }
       .etf-picker { max-width: none; }
       .etf-picker-head { grid-template-columns: 1fr; }
@@ -142,43 +147,45 @@
           </div>
         </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <div class="panel-title">선택 종목 통합 그래프</div>
-              <div class="muted">체크된 종목만 한 그래프에 표시됩니다.</div>
+        <div class="graph-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">선택 종목 통합 그래프</div>
+                <div class="muted">체크된 종목만 한 그래프에 표시됩니다.</div>
+              </div>
+              <div class="panel-tools">
+                <label>기준
+                  <select id="chartMetric">
+                    <option value="weight">비중</option>
+                    <option value="market_value">평가금액</option>
+                    <option value="quantity">수량</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <div class="panel-tools">
-              <label>기준
-                <select id="chartMetric">
-                  <option value="weight">비중</option>
-                  <option value="market_value">평가금액</option>
-                  <option value="quantity">수량</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          <canvas id="chart" class="chart"></canvas>
-        </section>
+            <canvas id="chart" class="chart"></canvas>
+          </section>
 
-        <section class="panel">
-          <div class="panel-head">
-            <div>
-              <div class="panel-title">같은 분류 ETF 보유 비교</div>
-              <div id="compareSub" class="muted">구성종목을 클릭하면 같은 지역/테마 ETF와 비교합니다.</div>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-title">같은 섹터 ETF 보유 비교</div>
+                <div id="compareSub" class="muted">구성종목을 클릭하면 같은 지역/섹터 ETF와 비교합니다.</div>
+              </div>
+              <div class="panel-tools">
+                <label>기준
+                  <select id="compareMetric">
+                    <option value="weight">비중</option>
+                    <option value="market_value">평가금액</option>
+                    <option value="quantity">수량</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <div class="panel-tools">
-              <label>기준
-                <select id="compareMetric">
-                  <option value="weight">비중</option>
-                  <option value="market_value">평가금액</option>
-                  <option value="quantity">수량</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          <div id="comparePanel"><div class="empty">비교할 종목을 선택하세요.</div></div>
-        </section>
+            <div id="comparePanel"><div class="empty">비교할 종목을 선택하세요.</div></div>
+          </section>
+        </div>
       </div>
 
       <aside>
@@ -312,7 +319,7 @@
             ${['국내', '해외', '혼합'].map(region => `<option value="${region}" ${region === state.etfRegion ? 'selected' : ''}>${region}</option>`).join('')}
           </select>
           <select id="themeFilter">
-            <option value="ALL">전체 테마</option>
+            <option value="ALL">전체 섹터</option>
             ${themes.map(theme => `<option value="${escapeHtml(theme)}" ${theme === state.etfTheme ? 'selected' : ''}>${escapeHtml(theme)}</option>`).join('')}
           </select>
           <select id="issuerFilter">
@@ -563,7 +570,7 @@
       const sub = document.getElementById('compareSub');
       const security = state.compareSecurity;
       if (!security) {
-        sub.textContent = '구성종목을 클릭하면 같은 지역/테마 ETF와 비교합니다.';
+        sub.textContent = '구성종목을 클릭하면 같은 지역/섹터 ETF와 비교합니다.';
         panel.innerHTML = '<div class="empty">비교할 종목을 선택하세요.</div>';
         return;
       }
@@ -571,7 +578,7 @@
       const selectedCategory = selectedSummary ? classifyEtf(selectedSummary) : { region: '전체', theme: '전체' };
       sub.textContent = `${security.name || security.ticker || ''} · ${selectedCategory.region}/${selectedCategory.theme}`;
       if (loading || !allHoldings) {
-        panel.innerHTML = '<div class="empty">같은 분류 ETF 비교 계산 중...</div>';
+        panel.innerHTML = '<div class="empty">같은 섹터 ETF 비교 계산 중...</div>';
         return;
       }
 
@@ -616,7 +623,7 @@
               <div class="compare-track"><div class="compare-fill" style="width:${width.toFixed(2)}%"></div></div>
               <div class="compare-number">${formatMetricValue(row.value, metric)}</div>
             </div>`;
-      }).join('') || '<div class="empty">같은 분류 ETF가 없습니다.</div>'}
+      }).join('') || '<div class="empty">같은 섹터 ETF가 없습니다.</div>'}
         </div>`;
     }
 
@@ -680,8 +687,18 @@
         return;
       }
 
-      const dates = [...new Set(series.flatMap(item => item.history.map(point => point.trade_date)))].sort();
-      const max = Math.max(1, ...series.flatMap(item => item.history.map(point => Number(point[metric] || 0)))) * 1.15;
+      const weekdaySeries = series.map(item => ({
+        ...item,
+        history: item.history.filter(point => isTradingWeekday(point.trade_date)),
+      })).filter(item => item.history.length);
+      if (!weekdaySeries.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('평일 거래 데이터가 없습니다.', 24, 34);
+        return;
+      }
+
+      const dates = [...new Set(weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
+      const max = Math.max(1, ...weekdaySeries.flatMap(item => item.history.map(point => Number(point[metric] || 0)))) * 1.15;
       const pad = { left: 58, right: 22, top: 22, bottom: 44 };
       const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
       const y = value => height - pad.bottom - (Number(value || 0) / max) * (height - pad.top - pad.bottom);
@@ -704,7 +721,7 @@
         ctx.stroke();
       });
 
-      series.forEach(item => {
+      weekdaySeries.forEach(item => {
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
         const coords = dates.map((date, index) => [x(index), y(byDate.get(date)?.[metric] || 0)]);
         drawLine(ctx, coords, item.color);
@@ -738,6 +755,12 @@
 
     function securityKey(row) {
       return row.isin || row.ticker || row.name;
+    }
+
+    function isTradingWeekday(value) {
+      const date = new Date(`${value}T00:00:00`);
+      const day = date.getDay();
+      return day !== 0 && day !== 6;
     }
 
     function currentDate() {
