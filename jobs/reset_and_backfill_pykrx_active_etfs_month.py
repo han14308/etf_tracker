@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 from pathlib import Path
 import sys
 import time
@@ -9,7 +10,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from etf_track.calendar import recent_weekdays
+from etf_track.calendar import recent_weekdays, weekdays_between
 from etf_track.config import ACTIVE_ETF_ISSUERS, DATABASE_URL
 from etf_track.db import clear_etf_data
 from etf_track.pykrx_active import (
@@ -27,6 +28,8 @@ def main() -> None:
         description="Reset ETF tables and backfill domestic active ETFs from PyKRX."
     )
     parser.add_argument("--days", type=int, default=31, help="Number of recent weekdays to collect.")
+    parser.add_argument("--start", type=date.fromisoformat, default=None, help="Start date YYYY-MM-DD.")
+    parser.add_argument("--end", type=date.fromisoformat, default=None, help="End date YYYY-MM-DD.")
     parser.add_argument("--yes", action="store_true", help="Required to delete existing ETF data.")
     parser.add_argument(
         "--pause",
@@ -49,7 +52,7 @@ def main() -> None:
             "Fix .env or add --allow-sqlite if you really want local data."
         )
 
-    dates = recent_weekdays(args.days)
+    dates = weekdays_between(args.start, args.end) if args.start and args.end else recent_weekdays(args.days)
 
     print(f"DATABASE_URL={_masked_database_url(DATABASE_URL)}", flush=True)
     print(f"ALLOWED_ISSUERS={', '.join(ACTIVE_ETF_ISSUERS)}", flush=True)

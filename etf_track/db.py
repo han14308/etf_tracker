@@ -459,6 +459,28 @@ def fetch_dates() -> list[date]:
         return list(conn.execute(stmt).scalars())
 
 
+def fetch_existing_holding_dates(start: date | None = None, end: date | None = None) -> set[date]:
+    init_db()
+    stmt = select(holdings.c.trade_date).distinct()
+    if start:
+        stmt = stmt.where(holdings.c.trade_date >= start)
+    if end:
+        stmt = stmt.where(holdings.c.trade_date <= end)
+    with get_engine().connect() as conn:
+        return set(conn.execute(stmt).scalars())
+
+
+def fetch_existing_etf_stat_dates(start: date | None = None, end: date | None = None) -> set[date]:
+    init_db()
+    stmt = select(etf_daily_stats.c.trade_date).distinct()
+    if start:
+        stmt = stmt.where(etf_daily_stats.c.trade_date >= start)
+    if end:
+        stmt = stmt.where(etf_daily_stats.c.trade_date <= end)
+    with get_engine().connect() as conn:
+        return set(conn.execute(stmt).scalars())
+
+
 def _row_to_dict(row: Any) -> dict:
     data = dict(row._mapping)
     _canonicalize_security_row(data)

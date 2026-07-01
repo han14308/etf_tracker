@@ -135,7 +135,7 @@ def _frame_records_by_ticker(frame: pd.DataFrame) -> dict[str, dict[str, Any]]:
         data = dict(record)
         ticker = _field_text(data, "티커", "ISU_SRT_CD") or str(index)
         ticker = ticker.strip()
-        if _is_real_krx_ticker(ticker):
+        if _is_krx_etf_ticker(ticker):
             records[ticker] = data
     return records
 
@@ -198,3 +198,8 @@ def _deviation_rate(close_price: float | None, nav: float | None) -> float | Non
 def _is_real_krx_ticker(value: Any) -> bool:
     text = str(value or "").strip()
     return text.isdigit() and len(text) == 6 and int(text) >= 1000
+
+
+def _is_krx_etf_ticker(value: Any) -> bool:
+    text = str(value or "").strip().upper()
+    return len(text) == 6 and text.isalnum()

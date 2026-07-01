@@ -51,6 +51,11 @@
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px; }
     .card .muted { font-size: 12px; font-weight: 700; }
     .metric { margin-top: 7px; font-size: 23px; font-weight: 800; color: var(--navy); }
+    .market-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; margin: 0 0 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .market-stat { min-width: 0; padding: 12px 14px; border-right: 1px solid var(--soft-line); }
+    .market-stat:last-child { border-right: 0; }
+    .market-label { color: var(--muted); font-size: 12px; font-weight: 700; }
+    .market-value { margin-top: 6px; color: var(--navy); font-size: 18px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
     .layout > *, .graph-grid > *, aside { min-width: 0; }
     .panel { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 10px 22px rgba(15, 23, 42, 0.035); }
@@ -71,6 +76,7 @@
     .graph-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
     .graph-grid .panel { display: flex; flex-direction: column; min-height: 430px; }
     .graph-grid .panel + .panel { margin-top: 0; }
+    .stats-chart-panel { margin-top: 16px; }
     .chart { width: 100%; height: 340px; display: block; background: #fff; }
     .selected-list { max-height: 460px; overflow: auto; }
     .selected-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
@@ -105,6 +111,9 @@
       .brand-copy, .nav-links { display: none; }
       .hero-title { display: block; }
       .grid { grid-template-columns: 1fr 1fr; }
+      .market-stats { grid-template-columns: 1fr 1fr; }
+      .market-stat:nth-child(2n) { border-right: 0; }
+      .market-stat { border-bottom: 1px solid var(--soft-line); }
       .layout { grid-template-columns: 1fr; }
       .graph-grid { grid-template-columns: 1fr; }
       .search { width: 100%; }
@@ -157,6 +166,15 @@
       <div class="card"><div class="muted">총 비중</div><div id="totalWeight" class="metric">-</div></div>
     </div>
 
+    <section class="market-stats" aria-label="ETF 시장 통계">
+      <div class="market-stat"><div class="market-label">ETF 종가</div><div id="etfClose" class="market-value">-</div></div>
+      <div class="market-stat"><div class="market-label">NAV</div><div id="etfNav" class="market-value">-</div></div>
+      <div class="market-stat"><div class="market-label">괴리율</div><div id="etfDeviation" class="market-value">-</div></div>
+      <div class="market-stat"><div class="market-label">ETF 거래대금</div><div id="etfTradingValue" class="market-value">-</div></div>
+      <div class="market-stat"><div class="market-label">시가총액</div><div id="etfMarketCap" class="market-value">-</div></div>
+      <div class="market-stat"><div class="market-label">상장좌수</div><div id="etfListedShares" class="market-value">-</div></div>
+    </section>
+
     <div class="layout">
       <div>
         <section class="panel">
@@ -181,6 +199,28 @@
               <tbody id="rows"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="panel stats-chart-panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-title">ETF 시장 통계 그래프</div>
+              <div class="muted">선택 ETF의 종가, NAV, 괴리율, 거래대금 등을 기간별로 봅니다.</div>
+            </div>
+            <div class="panel-tools">
+              <label>기준
+                <select id="etfStatsMetric">
+                  <option value="close_price">ETF 종가</option>
+                  <option value="nav">NAV</option>
+                  <option value="deviation_rate">괴리율</option>
+                  <option value="trading_value">ETF 거래대금</option>
+                  <option value="market_cap">시가총액</option>
+                  <option value="listed_shares">상장좌수</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <canvas id="etfStatsChart" class="chart"></canvas>
         </section>
 
         <div class="graph-grid">
@@ -250,6 +290,8 @@
       summaries: [],
       selectedEtf: '',
       holdings: [],
+      etfStats: null,
+      etfStatsHistory: [],
       selected: new Map(),
       etfQuery: '',
       etfIssuer: 'ALL',
@@ -494,11 +536,31 @@
       const date = currentDate();
       if (!date || !state.selectedEtf) return;
       setStatus(`${displayEtfName(state.selectedEtf)} 조회 중...`);
-      state.holdings = await fetch(`/api/holdings?trade_date=${date}&etf_code=${encodeURIComponent(state.selectedEtf)}`).then(r => r.json());
+      const [holdings, stats] = await Promise.all([
+        fetch(`/api/holdings?trade_date=${date}&etf_code=${encodeURIComponent(state.selectedEtf)}`).then(r => r.json()),
+        loadEtfMarketStats(date, state.selectedEtf),
+      ]);
+      state.holdings = holdings;
+      state.etfStats = stats;
       renderSummary();
       renderRows();
       if (state.compareSecurity) await loadPeerComparison(state.compareSecurity);
       setStatus(`${displayEtfName(state.selectedEtf)} ${fmtNum(state.holdings.length)}개 종목`);
+    }
+
+    async function loadEtfMarketStats(date, etfCode) {
+      const range = [...state.dates].sort();
+      const params = new URLSearchParams({
+        start: range[0] || date,
+        end: range[range.length - 1] || date,
+        etf_code: etfCode,
+      });
+      const rows = await fetch(`/api/etf-daily-stats?${params.toString()}`).then(r => {
+        if (!r.ok) return [];
+        return r.json();
+      }).catch(() => []);
+      state.etfStatsHistory = rows;
+      return rows.find(row => normalizeTradeDate(row.trade_date) === date) || rows[rows.length - 1] || null;
     }
 
     function renderSummary() {
@@ -508,6 +570,18 @@
       document.getElementById('totalValue').textContent = fmtWon(summary.total_market_value || sumBy(state.holdings, 'market_value'));
       document.getElementById('totalWeight').textContent = fmtPct(summary.total_weight || sumBy(state.holdings, 'weight'));
       document.getElementById('tableSub').textContent = `${currentDate()} · ${state.selectedEtf}`;
+      renderEtfMarketStats();
+    }
+
+    function renderEtfMarketStats() {
+      const stats = state.etfStats || {};
+      setText('etfClose', stats.close_price ? `${fmtNum(stats.close_price)}원` : '-');
+      setText('etfNav', stats.nav ? `${fmtNum(stats.nav, 2)}원` : '-');
+      setText('etfDeviation', stats.deviation_rate || stats.deviation_rate === 0 ? fmtPct(stats.deviation_rate) : '-');
+      setText('etfTradingValue', stats.trading_value ? fmtWon(stats.trading_value) : '-');
+      setText('etfMarketCap', stats.market_cap ? fmtWon(stats.market_cap) : '-');
+      setText('etfListedShares', stats.listed_shares ? `${fmtNum(stats.listed_shares)}좌` : '-');
+      drawEtfStatsChart();
     }
 
     function renderRows() {
@@ -873,6 +947,91 @@
       });
     }
 
+    function drawEtfStatsChart() {
+      const canvas = document.getElementById('etfStatsChart');
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, rect.width * dpr);
+      canvas.height = Math.max(1, rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const metric = document.getElementById('etfStatsMetric')?.value || 'close_price';
+      const history = validEtfStatsHistory(state.etfStatsHistory, metric);
+      if (!history.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('표시할 ETF 시장 통계가 없습니다.', 24, 34);
+        return;
+      }
+
+      const dates = history.map(point => point.trade_date);
+      const values = history.map(point => metricValue(point, metric));
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const span = Math.max(1, maxValue - minValue);
+      const topValue = maxValue + span * 0.12;
+      const bottomValue = metric === 'deviation_rate' ? Math.min(0, minValue - span * 0.12) : Math.max(0, minValue - span * 0.12);
+      const pad = { left: 64, right: 22, top: 22, bottom: 44 };
+      const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
+      const y = value => height - pad.bottom - ((Number(value || 0) - bottomValue) / (topValue - bottomValue || 1)) * (height - pad.top - pad.bottom);
+
+      ctx.strokeStyle = '#d0d5dd';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top);
+      ctx.lineTo(pad.left, height - pad.bottom);
+      ctx.lineTo(width - pad.right, height - pad.bottom);
+      ctx.stroke();
+
+      [bottomValue, (bottomValue + topValue) / 2, topValue].forEach(value => {
+        ctx.fillStyle = '#667085';
+        ctx.fillText(etfStatsAxisLabel(value, metric), 8, y(value) + 4);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y(value));
+        ctx.lineTo(width - pad.right, y(value));
+        ctx.stroke();
+      });
+
+      const coords = history.map((point, index) => [x(index), y(metricValue(point, metric))]);
+      drawLine(ctx, coords, '#1867e8', { radius: 2.8 });
+
+      ctx.fillStyle = '#667085';
+      dates.forEach((date, index) => {
+        if (index === 0 || index === dates.length - 1 || index % 5 === 0) {
+          ctx.save();
+          ctx.translate(x(index), height - 14);
+          ctx.rotate(-0.45);
+          ctx.fillText(date.slice(5), 0, 0);
+          ctx.restore();
+        }
+      });
+    }
+
+    function validEtfStatsHistory(history, metric) {
+      const seen = new Set();
+      return (history || [])
+        .map(point => ({ ...point, trade_date: normalizeTradeDate(point?.trade_date) }))
+        .filter(point => point.trade_date && isTradingWeekday(point.trade_date) && hasMetricValue(point, metric))
+        .sort((a, b) => String(a.trade_date).localeCompare(String(b.trade_date)))
+        .filter(point => {
+          if (seen.has(point.trade_date)) return false;
+          seen.add(point.trade_date);
+          return true;
+        });
+    }
+
+    function etfStatsAxisLabel(value, metric) {
+      if (metric === 'deviation_rate') return `${Number(value || 0).toFixed(2)}%`;
+      if (metric === 'close_price' || metric === 'nav') return shortNumber(value);
+      if (metric === 'listed_shares') return shortNumber(value);
+      return shortNumber(value);
+    }
+
     function drawLine(ctx, coords, color, options = {}) {
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
@@ -970,6 +1129,11 @@
 
     function currentDate() {
       return document.getElementById('dateInput').value || document.getElementById('dateSelect').value;
+    }
+
+    function setText(id, value) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
     }
 
     function displayEtfName(code) {
@@ -1079,6 +1243,9 @@
     document.getElementById('chartMetric').addEventListener('change', () => {
       drawChart();
     });
+    document.getElementById('etfStatsMetric').addEventListener('change', () => {
+      drawEtfStatsChart();
+    });
     document.getElementById('compareMetric').addEventListener('change', event => {
       state.compareMetric = event.target.value;
       const rows = state.holdingsByDate.get(currentDate());
@@ -1089,6 +1256,10 @@
       renderSelected();
       renderRows();
       drawChart();
+    });
+    window.addEventListener('resize', () => {
+      drawChart();
+      drawEtfStatsChart();
     });
     init();
   </script>
