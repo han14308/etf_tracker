@@ -64,6 +64,7 @@
     .panel-title { font-weight: 800; color: var(--navy); }
     .panel-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .panel-tools input[type="checkbox"] { width: 16px; height: 16px; padding: 0; vertical-align: middle; }
+    .tool-button { height: 30px; padding: 0 9px; background: #fff; color: #344054; border-color: #cbd5e1; font-size: 12px; }
     .search { width: 240px; }
     .table-wrap { overflow: auto; max-height: 360px; }
     table { width: 100%; min-width: 860px; border-collapse: collapse; }
@@ -78,6 +79,12 @@
     .graph-grid .panel + .panel { margin-top: 0; }
     .stats-chart-panel { margin-top: 16px; }
     .chart { width: 100%; height: 340px; display: block; background: #fff; }
+    .split-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 14px 14px; background: #fff; }
+    .split-chart-card { min-width: 0; border: 1px solid var(--soft-line); border-radius: 8px; overflow: hidden; background: #fff; }
+    .split-chart-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--soft-line); font-size: 13px; font-weight: 800; color: var(--navy); }
+    .split-chart-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .split-chart-title small { flex: 0 0 auto; color: var(--muted); font-weight: 700; }
+    .split-chart { width: 100%; height: 210px; display: block; background: #fff; }
     .selected-list { max-height: 460px; overflow: auto; }
     .selected-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
     .selected-item input { width: 16px; height: 16px; }
@@ -116,6 +123,7 @@
       .market-stat { border-bottom: 1px solid var(--soft-line); }
       .layout { grid-template-columns: 1fr; }
       .graph-grid { grid-template-columns: 1fr; }
+      .split-charts { grid-template-columns: 1fr; }
       .search { width: 100%; }
       .etf-picker { max-width: none; }
       .etf-picker-head { grid-template-columns: 1fr; }
@@ -218,6 +226,7 @@
                   <option value="listed_shares">상장좌수</option>
                 </select>
               </label>
+              <button id="resetEtfStatsZoom" class="tool-button" type="button">줌 리셋</button>
             </div>
           </div>
           <canvas id="etfStatsChart" class="chart"></canvas>
@@ -231,6 +240,13 @@
                 <div class="muted">종가 선택 시 KRX 실제 종가를 불러옵니다.</div>
               </div>
               <div class="panel-tools">
+                <label>보기
+                  <select id="chartView">
+                    <option value="combined">통합</option>
+                    <option value="split">개별</option>
+                    <option value="both">통합+개별</option>
+                  </select>
+                </label>
                 <label>기준
                   <select id="chartMetric">
                     <option value="weight">비중</option>
@@ -239,9 +255,11 @@
                     <option value="close_price">종가</option>
                   </select>
                 </label>
+                <button id="resetHoldingZoom" class="tool-button" type="button">줌 리셋</button>
               </div>
             </div>
             <canvas id="chart" class="chart"></canvas>
+            <div id="splitCharts" class="split-charts" hidden></div>
           </section>
 
           <section class="panel">
@@ -304,6 +322,8 @@
       etfSearchComposing: false,
       holdingSearchComposing: false,
       marketDatesByRange: new Map(),
+      chartZoom: { holding: null, etfStats: null },
+      chartDrag: null,
     };
 
     async function init() {
@@ -858,6 +878,8 @@
 
     function drawChart() {
       const canvas = document.getElementById('chart');
+      const view = document.getElementById('chartView')?.value || 'combined';
+      canvas.hidden = false;
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.max(1, rect.width * dpr);
@@ -875,6 +897,8 @@
       if (!series.length) {
         ctx.fillStyle = '#667085';
         ctx.fillText('체크된 종목의 히스토리가 없습니다.', 24, 34);
+        renderSplitCharts([], metric, []);
+        canvas.hidden = view === 'split';
         return;
       }
 
@@ -885,6 +909,8 @@
           ctx.fillText('실제 종가 로딩 중...', 24, 34);
           const unloadStartedItems = pendingCloseItems.filter(item => !item.closeLoading);
           if (unloadStartedItems.length) loadCloseHistoriesForChart(unloadStartedItems);
+          renderSplitCharts([], metric, []);
+          canvas.hidden = view === 'split';
           return;
         }
       }
@@ -896,13 +922,21 @@
       if (!weekdaySeries.length) {
         ctx.fillStyle = '#667085';
         ctx.fillText('표시할 거래일 데이터가 없습니다.', 24, 34);
+        renderSplitCharts([], metric, []);
+        canvas.hidden = view === 'split';
         return;
       }
 
-      const dates = [...new Set(weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
+      const allDates = [...new Set(weekdaySeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
+      const dates = zoomedDates(allDates, 'holding');
+      const visibleDateSet = new Set(dates);
+      const visibleSeries = weekdaySeries.map(item => ({
+        ...item,
+        history: item.history.filter(point => visibleDateSet.has(point.trade_date)),
+      })).filter(item => item.history.length);
       const max = Math.max(
         1,
-        ...weekdaySeries.flatMap(item => item.history.map(point => metricValue(point, metric))),
+        ...visibleSeries.flatMap(item => item.history.map(point => metricValue(point, metric))),
       ) * 1.15;
       const pad = { left: 58, right: 22, top: 22, bottom: 44 };
       const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
@@ -926,7 +960,7 @@
         ctx.stroke();
       });
 
-      weekdaySeries.forEach(item => {
+      visibleSeries.forEach(item => {
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
         const coords = dates.map((date, index) => {
           const point = byDate.get(date);
@@ -944,6 +978,97 @@
           ctx.fillText(date.slice(5), 0, 0);
           ctx.restore();
         }
+      });
+      renderSplitCharts(weekdaySeries, metric, dates);
+      canvas.hidden = view === 'split';
+    }
+
+    function renderSplitCharts(series, metric, dates) {
+      const container = document.getElementById('splitCharts');
+      const view = document.getElementById('chartView')?.value || 'combined';
+      if (!container) return;
+      if (view === 'combined' || !series.length) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+      }
+      container.hidden = false;
+      container.innerHTML = series.map((item, index) => `
+        <div class="split-chart-card">
+          <div class="split-chart-title">
+            <span style="color:${item.color}">${escapeHtml(item.name || item.ticker || '')}</span>
+            <small>${escapeHtml(item.ticker || '')}</small>
+          </div>
+          <canvas id="splitChart${index}" class="split-chart"></canvas>
+        </div>
+      `).join('');
+      requestAnimationFrame(() => {
+        series.forEach((item, index) => {
+          const miniCanvas = document.getElementById(`splitChart${index}`);
+          if (!miniCanvas) return;
+          drawSplitHoldingChart(miniCanvas, item, metric, dates);
+          installChartZoom(miniCanvas.id, 'holding');
+        });
+      });
+    }
+
+    function drawSplitHoldingChart(canvas, item, metric, dates) {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, rect.width * dpr);
+      canvas.height = Math.max(1, rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+
+      const visibleDateSet = new Set(dates);
+      const history = item.history.filter(point => visibleDateSet.has(point.trade_date) && hasMetricValue(point, metric));
+      if (!history.length || !dates.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('No data', 16, 28);
+        return;
+      }
+
+      const max = Math.max(1, ...history.map(point => metricValue(point, metric))) * 1.15;
+      const pad = { left: 48, right: 14, top: 16, bottom: 32 };
+      const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
+      const y = value => height - pad.bottom - (Number(value || 0) / max) * (height - pad.top - pad.bottom);
+
+      ctx.strokeStyle = '#d0d5dd';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top);
+      ctx.lineTo(pad.left, height - pad.bottom);
+      ctx.lineTo(width - pad.right, height - pad.bottom);
+      ctx.stroke();
+
+      [0, max].forEach(value => {
+        ctx.fillStyle = '#667085';
+        ctx.fillText(chartAxisLabel(value, metric), 7, y(value) + 4);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y(value));
+        ctx.lineTo(width - pad.right, y(value));
+        ctx.stroke();
+      });
+
+      const byDate = new Map(history.map(point => [point.trade_date, point]));
+      const coords = dates.map((date, index) => {
+        const point = byDate.get(date);
+        return point ? [x(index), y(metricValue(point, metric))] : null;
+      });
+      drawLine(ctx, coords, item.color, { radius: 2.4 });
+
+      ctx.fillStyle = '#667085';
+      [0, dates.length - 1].forEach(index => {
+        if (index < 0 || !dates[index]) return;
+        ctx.save();
+        ctx.translate(x(index), height - 10);
+        ctx.rotate(-0.35);
+        ctx.fillText(dates[index].slice(5), 0, 0);
+        ctx.restore();
       });
     }
 
@@ -968,8 +1093,11 @@
         return;
       }
 
-      const dates = history.map(point => point.trade_date);
-      const values = history.map(point => metricValue(point, metric));
+      const allDates = history.map(point => point.trade_date);
+      const dates = zoomedDates(allDates, 'etfStats');
+      const visibleDateSet = new Set(dates);
+      const visibleHistory = history.filter(point => visibleDateSet.has(point.trade_date));
+      const values = visibleHistory.map(point => metricValue(point, metric));
       const minValue = Math.min(...values);
       const maxValue = Math.max(...values);
       const span = Math.max(1, maxValue - minValue);
@@ -997,7 +1125,7 @@
         ctx.stroke();
       });
 
-      const coords = history.map((point, index) => [x(index), y(metricValue(point, metric))]);
+      const coords = visibleHistory.map((point, index) => [x(index), y(metricValue(point, metric))]);
       drawLine(ctx, coords, '#1867e8', { radius: 2.8 });
 
       ctx.fillStyle = '#667085';
@@ -1030,6 +1158,102 @@
       if (metric === 'close_price' || metric === 'nav') return shortNumber(value);
       if (metric === 'listed_shares') return shortNumber(value);
       return shortNumber(value);
+    }
+
+    function zoomedDates(dates, key) {
+      const uniqueDates = [...new Set(dates || [])].sort();
+      const zoom = state.chartZoom[key];
+      if (!zoom || uniqueDates.length < 2) return uniqueDates;
+      const start = Math.max(0, Math.min(uniqueDates.length - 1, zoom.start));
+      const end = Math.max(start, Math.min(uniqueDates.length - 1, zoom.end));
+      return uniqueDates.slice(start, end + 1);
+    }
+
+    function setChartZoom(key, start, end, total) {
+      if (!total || total < 2) {
+        state.chartZoom[key] = null;
+        redrawZoomedChart(key);
+        return;
+      }
+      let nextStart = Math.max(0, Math.min(total - 1, Math.round(start)));
+      let nextEnd = Math.max(0, Math.min(total - 1, Math.round(end)));
+      if (nextEnd < nextStart) [nextStart, nextEnd] = [nextEnd, nextStart];
+      if (nextEnd - nextStart < 1) nextEnd = Math.min(total - 1, nextStart + 1);
+      state.chartZoom[key] = nextStart === 0 && nextEnd === total - 1 ? null : { start: nextStart, end: nextEnd };
+      redrawZoomedChart(key);
+    }
+
+    function resetChartZoom(key) {
+      state.chartZoom[key] = null;
+      redrawZoomedChart(key);
+    }
+
+    function redrawZoomedChart(key) {
+      if (key === 'holding') drawChart();
+      if (key === 'etfStats') drawEtfStatsChart();
+    }
+
+    function chartDatesForZoom(key) {
+      if (key === 'etfStats') {
+        const metric = document.getElementById('etfStatsMetric')?.value || 'close_price';
+        return validEtfStatsHistory(state.etfStatsHistory, metric).map(point => point.trade_date);
+      }
+      const metric = document.getElementById('chartMetric')?.value || 'weight';
+      const series = [...state.selected.values()]
+        .map(item => ({ ...item, history: currentHistory(item) }))
+        .filter(item => item.checked && item.history.length);
+      const histories = series.flatMap(item => validMetricHistory(metric === 'close_price' ? item.closeHistory || [] : item.history, metric));
+      return [...new Set(histories.map(point => point.trade_date))].sort();
+    }
+
+    function indexFromChartX(clientX, canvas, dateCount) {
+      const rect = canvas.getBoundingClientRect();
+      const pad = { left: canvas.id === 'etfStatsChart' ? 64 : 58, right: 22 };
+      const ratio = (clientX - rect.left - pad.left) / Math.max(1, rect.width - pad.left - pad.right);
+      return Math.max(0, Math.min(dateCount - 1, Math.round(ratio * Math.max(0, dateCount - 1))));
+    }
+
+    function installChartZoom(canvasId, key) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      canvas.addEventListener('wheel', event => {
+        const dates = chartDatesForZoom(key);
+        if (dates.length < 3) return;
+        event.preventDefault();
+        const current = state.chartZoom[key] || { start: 0, end: dates.length - 1 };
+        const visibleCount = current.end - current.start + 1;
+        const focus = current.start + indexFromChartX(event.clientX, canvas, visibleCount);
+        const zoomIn = event.deltaY < 0;
+        const span = Math.max(2, visibleCount);
+        const nextSpan = Math.max(2, Math.min(dates.length, Math.round(span * (zoomIn ? 0.75 : 1.35))));
+        const focusRatio = span <= 1 ? 0.5 : (focus - current.start) / span;
+        const start = focus - nextSpan * focusRatio;
+        setChartZoom(key, start, start + nextSpan - 1, dates.length);
+      }, { passive: false });
+
+      canvas.addEventListener('pointerdown', event => {
+        const dates = chartDatesForZoom(key);
+        if (dates.length < 3) return;
+        canvas.setPointerCapture(event.pointerId);
+        state.chartDrag = { key, canvasId, startX: event.clientX, endX: event.clientX };
+      });
+      canvas.addEventListener('pointermove', event => {
+        if (!state.chartDrag || state.chartDrag.canvasId !== canvasId) return;
+        state.chartDrag.endX = event.clientX;
+      });
+      canvas.addEventListener('pointerup', event => {
+        if (!state.chartDrag || state.chartDrag.canvasId !== canvasId) return;
+        const drag = state.chartDrag;
+        state.chartDrag = null;
+        const dates = chartDatesForZoom(key);
+        if (Math.abs(event.clientX - drag.startX) < 8 || dates.length < 3) return;
+        const current = state.chartZoom[key] || { start: 0, end: dates.length - 1 };
+        const visibleCount = current.end - current.start + 1;
+        const start = current.start + indexFromChartX(drag.startX, canvas, visibleCount);
+        const end = current.start + indexFromChartX(event.clientX, canvas, visibleCount);
+        setChartZoom(key, start, end, dates.length);
+      });
+      canvas.addEventListener('dblclick', () => resetChartZoom(key));
     }
 
     function drawLine(ctx, coords, color, options = {}) {
@@ -1241,10 +1465,19 @@
       renderRows();
     });
     document.getElementById('chartMetric').addEventListener('change', () => {
+      resetChartZoom('holding');
+    });
+    document.getElementById('chartView').addEventListener('change', () => {
       drawChart();
     });
     document.getElementById('etfStatsMetric').addEventListener('change', () => {
-      drawEtfStatsChart();
+      resetChartZoom('etfStats');
+    });
+    document.getElementById('resetHoldingZoom').addEventListener('click', () => {
+      resetChartZoom('holding');
+    });
+    document.getElementById('resetEtfStatsZoom').addEventListener('click', () => {
+      resetChartZoom('etfStats');
     });
     document.getElementById('compareMetric').addEventListener('change', event => {
       state.compareMetric = event.target.value;
@@ -1255,8 +1488,10 @@
       state.selected.clear();
       renderSelected();
       renderRows();
-      drawChart();
+      resetChartZoom('holding');
     });
+    installChartZoom('chart', 'holding');
+    installChartZoom('etfStatsChart', 'etfStats');
     window.addEventListener('resize', () => {
       drawChart();
       drawEtfStatsChart();
