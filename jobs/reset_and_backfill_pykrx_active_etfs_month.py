@@ -55,7 +55,7 @@ def main() -> None:
     print(f"ALLOWED_ISSUERS={', '.join(ACTIVE_ETF_ISSUERS)}", flush=True)
     preflight_date, preflight_products = _find_preflight_date(dates)
 
-    print("RESET etf_holdings, etf_products, krx_rows", flush=True)
+    print("RESET etf_holdings, etf_products, krx_rows, security_daily_stats, etf_daily_stats", flush=True)
     clear_etf_data()
 
     total = 0

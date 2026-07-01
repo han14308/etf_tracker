@@ -11,6 +11,7 @@ from etf_track.config import ACTIVE_BACKFILL_ON_START_DAYS, BACKFILL_TOKEN
 from etf_track.db import (
     fetch_compare,
     fetch_dates,
+    fetch_etf_daily_stats,
     fetch_exposure,
     fetch_holding_history,
     fetch_holdings,
@@ -18,6 +19,7 @@ from etf_track.db import (
     fetch_krx_rows,
     fetch_krx_summary,
     fetch_products,
+    fetch_security_daily_stats,
     fetch_security_history,
     fetch_summary,
     init_db,
@@ -105,6 +107,26 @@ def market_dates(
     end: date | None = Query(default=None),
 ) -> list[str]:
     return fetch_market_dates(start=start, end=end)
+
+
+@app.get("/api/security-daily-stats")
+def security_daily_stats(
+    ticker: str | None = Query(default=None),
+    isin: str | None = Query(default=None),
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+) -> list[dict]:
+    return fetch_security_daily_stats(ticker=ticker, isin=isin, start=start, end=end)
+
+
+@app.get("/api/etf-daily-stats")
+def etf_daily_stats(
+    etf_code: str | None = Query(default=None),
+    ticker: str | None = Query(default=None),
+    start: date | None = Query(default=None),
+    end: date | None = Query(default=None),
+) -> list[dict]:
+    return fetch_etf_daily_stats(etf_code=etf_code, ticker=ticker, start=start, end=end)
 
 
 @app.get("/api/products")

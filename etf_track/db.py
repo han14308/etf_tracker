@@ -57,6 +57,37 @@ etf_products = Table(
     __import__("sqlalchemy").Column("data", JSON, nullable=True),
 )
 
+security_daily_stats = Table(
+    "security_daily_stats",
+    metadata,
+    __import__("sqlalchemy").Column("trade_date", Date, primary_key=True),
+    __import__("sqlalchemy").Column("ticker", String(32), primary_key=True),
+    __import__("sqlalchemy").Column("isin", String(32), nullable=True),
+    __import__("sqlalchemy").Column("name", String(255), nullable=True),
+    __import__("sqlalchemy").Column("close_price", Numeric(24, 6), nullable=True),
+    __import__("sqlalchemy").Column("trading_value", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("market_cap", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("listed_shares", Numeric(28, 2), nullable=True),
+)
+
+etf_daily_stats = Table(
+    "etf_daily_stats",
+    metadata,
+    __import__("sqlalchemy").Column("trade_date", Date, primary_key=True),
+    __import__("sqlalchemy").Column("etf_code", String(64), primary_key=True),
+    __import__("sqlalchemy").Column("ticker", String(32), nullable=True),
+    __import__("sqlalchemy").Column("isin", String(32), nullable=True),
+    __import__("sqlalchemy").Column("name", String(255), nullable=True),
+    __import__("sqlalchemy").Column("close_price", Numeric(24, 6), nullable=True),
+    __import__("sqlalchemy").Column("nav", Numeric(24, 6), nullable=True),
+    __import__("sqlalchemy").Column("deviation_rate", Numeric(12, 6), nullable=True),
+    __import__("sqlalchemy").Column("trading_value", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("market_cap", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("net_asset", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("listed_shares", Numeric(28, 2), nullable=True),
+    __import__("sqlalchemy").Column("index_value", Numeric(24, 6), nullable=True),
+)
+
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
@@ -88,6 +119,8 @@ def clear_etf_data() -> None:
         conn.execute(delete(holdings))
         conn.execute(delete(etf_products))
         conn.execute(delete(krx_rows))
+        conn.execute(delete(security_daily_stats))
+        conn.execute(delete(etf_daily_stats))
 
 
 def _clean_number(value: Any) -> Decimal | None:
@@ -305,6 +338,111 @@ def upsert_products(products: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
+def upsert_security_daily_stats(records: list[dict[str, Any]]) -> int:
+    if not records:
+        return 0
+
+    init_db()
+    rows = []
+    for record in records:
+        row = {
+            "trade_date": record["trade_date"],
+            "ticker": str(record["ticker"]),
+            "isin": _clean_text(record.get("isin")),
+            "name": _clean_text(record.get("name")),
+            "close_price": _clean_number(record.get("close_price")),
+            "trading_value": _clean_number(record.get("trading_value")),
+            "market_cap": _clean_number(record.get("market_cap")),
+            "listed_shares": _clean_number(record.get("listed_shares")),
+        }
+        _canonicalize_security_row(row)
+        rows.append(row)
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            stmt = pg_insert(security_daily_stats).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["trade_date", "ticker"],
+                set_={
+                    "isin": stmt.excluded.isin,
+                    "name": stmt.excluded.name,
+                    "close_price": stmt.excluded.close_price,
+                    "trading_value": stmt.excluded.trading_value,
+                    "market_cap": stmt.excluded.market_cap,
+                    "listed_shares": stmt.excluded.listed_shares,
+                },
+            )
+            conn.execute(stmt)
+        else:
+            for row in rows:
+                conn.execute(
+                    delete(security_daily_stats).where(
+                        security_daily_stats.c.trade_date == row["trade_date"],
+                        security_daily_stats.c.ticker == row["ticker"],
+                    )
+                )
+            conn.execute(insert(security_daily_stats), rows)
+    return len(rows)
+
+
+def upsert_etf_daily_stats(records: list[dict[str, Any]]) -> int:
+    if not records:
+        return 0
+
+    init_db()
+    rows = [
+        {
+            "trade_date": record["trade_date"],
+            "etf_code": str(record["etf_code"]),
+            "ticker": _clean_text(record.get("ticker")),
+            "isin": _clean_text(record.get("isin")),
+            "name": _clean_text(record.get("name")),
+            "close_price": _clean_number(record.get("close_price")),
+            "nav": _clean_number(record.get("nav")),
+            "deviation_rate": _clean_number(record.get("deviation_rate")),
+            "trading_value": _clean_number(record.get("trading_value")),
+            "market_cap": _clean_number(record.get("market_cap")),
+            "net_asset": _clean_number(record.get("net_asset")),
+            "listed_shares": _clean_number(record.get("listed_shares")),
+            "index_value": _clean_number(record.get("index_value")),
+        }
+        for record in records
+    ]
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            stmt = pg_insert(etf_daily_stats).values(rows)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["trade_date", "etf_code"],
+                set_={
+                    "ticker": stmt.excluded.ticker,
+                    "isin": stmt.excluded.isin,
+                    "name": stmt.excluded.name,
+                    "close_price": stmt.excluded.close_price,
+                    "nav": stmt.excluded.nav,
+                    "deviation_rate": stmt.excluded.deviation_rate,
+                    "trading_value": stmt.excluded.trading_value,
+                    "market_cap": stmt.excluded.market_cap,
+                    "net_asset": stmt.excluded.net_asset,
+                    "listed_shares": stmt.excluded.listed_shares,
+                    "index_value": stmt.excluded.index_value,
+                },
+            )
+            conn.execute(stmt)
+        else:
+            for row in rows:
+                conn.execute(
+                    delete(etf_daily_stats).where(
+                        etf_daily_stats.c.trade_date == row["trade_date"],
+                        etf_daily_stats.c.etf_code == row["etf_code"],
+                    )
+                )
+            conn.execute(insert(etf_daily_stats), rows)
+    return len(rows)
+
+
 def fetch_products(active_only: bool = True) -> list[dict]:
     init_db()
     stmt = select(etf_products).order_by(etf_products.c.issuer, etf_products.c.name)
@@ -376,6 +514,50 @@ def fetch_holding_history(
             )
             rows = [_row_to_dict(row) for row in conn.execute(fallback)]
         return rows
+
+
+def fetch_security_daily_stats(
+    ticker: str | None = None,
+    isin: str | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[dict]:
+    init_db()
+    ticker = _clean_text(ticker)
+    isin = _clean_text(isin)
+    stmt = select(security_daily_stats).order_by(security_daily_stats.c.trade_date.asc(), security_daily_stats.c.ticker)
+    if ticker:
+        stmt = stmt.where(security_daily_stats.c.ticker == ticker)
+    if isin:
+        stmt = stmt.where(security_daily_stats.c.isin == isin)
+    if start:
+        stmt = stmt.where(security_daily_stats.c.trade_date >= start)
+    if end:
+        stmt = stmt.where(security_daily_stats.c.trade_date <= end)
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
+
+
+def fetch_etf_daily_stats(
+    etf_code: str | None = None,
+    ticker: str | None = None,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[dict]:
+    init_db()
+    etf_code = _clean_text(etf_code)
+    ticker = _clean_text(ticker)
+    stmt = select(etf_daily_stats).order_by(etf_daily_stats.c.trade_date.asc(), etf_daily_stats.c.etf_code)
+    if etf_code:
+        stmt = stmt.where(etf_daily_stats.c.etf_code == etf_code)
+    if ticker:
+        stmt = stmt.where(etf_daily_stats.c.ticker == ticker)
+    if start:
+        stmt = stmt.where(etf_daily_stats.c.trade_date >= start)
+    if end:
+        stmt = stmt.where(etf_daily_stats.c.trade_date <= end)
+    with get_engine().connect() as conn:
+        return [_row_to_dict(row) for row in conn.execute(stmt)]
 
 
 def _is_synthetic_ticker(ticker: str | None) -> bool:

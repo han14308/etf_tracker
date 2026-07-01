@@ -16,7 +16,36 @@ def fetch_close_history(
 
     from_ymd = (start or date(2020, 1, 1)).strftime("%Y%m%d")
     to_ymd = (end or date.today()).strftime("%Y%m%d")
+    stored = _fetch_stored_close_history(ticker, start=start, end=end)
+    if stored:
+        return stored
     return _fetch_close_history_cached(ticker, from_ymd, to_ymd)
+
+
+def _fetch_stored_close_history(
+    ticker: str,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[dict[str, Any]]:
+    try:
+        from etf_track.db import fetch_security_daily_stats
+    except Exception:
+        return []
+
+    rows = fetch_security_daily_stats(ticker=ticker, start=start, end=end)
+    result = []
+    for row in rows:
+        close = row.get("close_price")
+        if close is None:
+            continue
+        result.append(
+            {
+                "trade_date": row["trade_date"],
+                "ticker": ticker,
+                "close_price": close,
+            }
+        )
+    return result
 
 
 def fetch_market_dates(
@@ -41,7 +70,7 @@ def _fetch_close_history_cached(ticker: str, from_ymd: str, to_ymd: str) -> list
         return []
 
     try:
-        frame = stock.get_market_ohlcv_by_date(from_ymd, to_ymd, ticker)
+        frame = stock.get_market_ohlcv_by_date(from_ymd, to_ymd, ticker, adjusted=False)
     except Exception as exc:
         print(f"CLOSE_HISTORY_FETCH_FAILED {ticker} {from_ymd}-{to_ymd}: {exc}", flush=True)
         return []
