@@ -85,6 +85,17 @@
     .split-chart-title span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .split-chart-title small { flex: 0 0 auto; color: var(--muted); font-weight: 700; }
     .split-chart { width: 100%; height: 210px; display: block; background: #fff; }
+    .custom-chart-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 0 14px 14px; background: #fff; }
+    .custom-chart-card { min-width: 0; border: 1px solid var(--soft-line); border-radius: 8px; overflow: hidden; background: #fff; }
+    .custom-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 11px; border-bottom: 1px solid var(--soft-line); }
+    .custom-chart-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 800; color: var(--navy); }
+    .custom-chart-tools { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+    .custom-chart-tools select { height: 28px; padding: 0 24px 0 8px; font-size: 12px; }
+    .custom-chart { width: 100%; height: 240px; display: block; background: #fff; }
+    .chart-tooltip { position: fixed; z-index: 30; min-width: 180px; max-width: 260px; padding: 10px 12px; background: #101828; color: #fff; border-radius: 8px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.25); font-size: 12px; line-height: 1.45; pointer-events: none; }
+    .chart-tooltip-title { font-weight: 800; margin-bottom: 5px; color: #fff; }
+    .chart-tooltip-row { display: flex; justify-content: space-between; gap: 12px; color: #d0d5dd; }
+    .chart-tooltip-row strong { color: #fff; font-weight: 800; white-space: nowrap; }
     .selected-list { max-height: 460px; overflow: auto; }
     .selected-item { display: grid; grid-template-columns: 24px 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid #edf0f2; }
     .selected-item input { width: 16px; height: 16px; }
@@ -124,6 +135,7 @@
       .layout { grid-template-columns: 1fr; }
       .graph-grid { grid-template-columns: 1fr; }
       .split-charts { grid-template-columns: 1fr; }
+      .custom-chart-board { grid-template-columns: 1fr; }
       .search { width: 100%; }
       .etf-picker { max-width: none; }
       .etf-picker-head { grid-template-columns: 1fr; }
@@ -256,10 +268,12 @@
                   </select>
                 </label>
                 <button id="resetHoldingZoom" class="tool-button" type="button">줌 리셋</button>
+                <button id="addChart" class="tool-button" type="button">+ 그래프</button>
               </div>
             </div>
             <canvas id="chart" class="chart"></canvas>
             <div id="splitCharts" class="split-charts" hidden></div>
+            <div id="customCharts" class="custom-chart-board" hidden></div>
           </section>
 
           <section class="panel">
@@ -300,6 +314,8 @@
     </div>
   </main>
 
+  <div id="chartTooltip" class="chart-tooltip" hidden></div>
+
   <script>
     const colors = ['#1f6feb', '#d76b00', '#12805c', '#7c3aed', '#c2410c', '#0369a1', '#be123c', '#4d7c0f'];
     const state = {
@@ -324,6 +340,9 @@
       marketDatesByRange: new Map(),
       chartZoom: { holding: null, etfStats: null },
       chartDrag: null,
+      chartPoints: new Map(),
+      customCharts: [],
+      nextCustomChartId: 1,
     };
 
     async function init() {
@@ -880,6 +899,8 @@
       const canvas = document.getElementById('chart');
       const view = document.getElementById('chartView')?.value || 'combined';
       canvas.hidden = false;
+      hideChartTooltip();
+      state.chartPoints.set(canvas.id, []);
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.max(1, rect.width * dpr);
@@ -898,6 +919,7 @@
         ctx.fillStyle = '#667085';
         ctx.fillText('체크된 종목의 히스토리가 없습니다.', 24, 34);
         renderSplitCharts([], metric, []);
+        renderCustomCharts();
         canvas.hidden = view === 'split';
         return;
       }
@@ -910,6 +932,7 @@
           const unloadStartedItems = pendingCloseItems.filter(item => !item.closeLoading);
           if (unloadStartedItems.length) loadCloseHistoriesForChart(unloadStartedItems);
           renderSplitCharts([], metric, []);
+          renderCustomCharts();
           canvas.hidden = view === 'split';
           return;
         }
@@ -923,6 +946,7 @@
         ctx.fillStyle = '#667085';
         ctx.fillText('표시할 거래일 데이터가 없습니다.', 24, 34);
         renderSplitCharts([], metric, []);
+        renderCustomCharts();
         canvas.hidden = view === 'split';
         return;
       }
@@ -960,14 +984,19 @@
         ctx.stroke();
       });
 
+      const chartPoints = [];
       visibleSeries.forEach(item => {
         const byDate = new Map(item.history.map(point => [point.trade_date, point]));
         const coords = dates.map((date, index) => {
           const point = byDate.get(date);
-          return point && hasMetricValue(point, metric) ? [x(index), y(metricValue(point, metric))] : null;
+          if (!point || !hasMetricValue(point, metric)) return null;
+          const coord = [x(index), y(metricValue(point, metric))];
+          chartPoints.push({ x: coord[0], y: coord[1], item, point, metric, kind: 'holding' });
+          return coord;
         });
         drawLine(ctx, coords, item.color);
       });
+      state.chartPoints.set(canvas.id, chartPoints);
 
       ctx.fillStyle = '#667085';
       dates.forEach((date, index) => {
@@ -980,6 +1009,7 @@
         }
       });
       renderSplitCharts(weekdaySeries, metric, dates);
+      renderCustomCharts();
       canvas.hidden = view === 'split';
     }
 
@@ -1013,6 +1043,7 @@
     }
 
     function drawSplitHoldingChart(canvas, item, metric, dates) {
+      state.chartPoints.set(canvas.id, []);
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.max(1, rect.width * dpr);
@@ -1055,11 +1086,16 @@
       });
 
       const byDate = new Map(history.map(point => [point.trade_date, point]));
+      const chartPoints = [];
       const coords = dates.map((date, index) => {
         const point = byDate.get(date);
-        return point ? [x(index), y(metricValue(point, metric))] : null;
+        if (!point) return null;
+        const coord = [x(index), y(metricValue(point, metric))];
+        chartPoints.push({ x: coord[0], y: coord[1], item, point, metric, kind: 'holding' });
+        return coord;
       });
       drawLine(ctx, coords, item.color, { radius: 2.4 });
+      state.chartPoints.set(canvas.id, chartPoints);
 
       ctx.fillStyle = '#667085';
       [0, dates.length - 1].forEach(index => {
@@ -1072,9 +1108,192 @@
       });
     }
 
+    function addCustomChart() {
+      const keys = [...state.selected.values()]
+        .filter(item => item.checked)
+        .map(item => item.key);
+      if (!keys.length) {
+        setStatus('그래프에 넣을 종목을 먼저 체크하세요.');
+        return;
+      }
+      const metric = document.getElementById('chartMetric')?.value || 'weight';
+      state.customCharts.push({
+        id: state.nextCustomChartId++,
+        keys,
+        metric,
+      });
+      renderCustomCharts();
+    }
+
+    function renderCustomCharts() {
+      const container = document.getElementById('customCharts');
+      if (!container) return;
+      if (!state.customCharts.length) {
+        container.hidden = true;
+        container.innerHTML = '';
+        return;
+      }
+      container.hidden = false;
+      container.innerHTML = state.customCharts.map(slot => {
+        const items = slot.keys.map(key => state.selected.get(key)).filter(Boolean);
+        const title = items.map(item => item.name || item.ticker || '').filter(Boolean).join(', ') || '그래프';
+        return `
+          <div class="custom-chart-card" data-chart-id="${slot.id}">
+            <div class="custom-chart-head">
+              <div class="custom-chart-title" title="${escapeHtml(title)}">${escapeHtml(shortName(title, 34))}</div>
+              <div class="custom-chart-tools">
+                <select data-action="metric" data-chart-id="${slot.id}">
+                  ${chartMetricOptions(slot.metric)}
+                </select>
+                <button class="remove" data-action="remove-chart" data-chart-id="${slot.id}" type="button">삭제</button>
+              </div>
+            </div>
+            <canvas id="customChart${slot.id}" class="custom-chart"></canvas>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('[data-action="metric"]').forEach(select => {
+        select.addEventListener('change', () => {
+          const slot = state.customCharts.find(chart => String(chart.id) === String(select.dataset.chartId));
+          if (!slot) return;
+          slot.metric = select.value;
+          renderCustomCharts();
+        });
+      });
+      container.querySelectorAll('[data-action="remove-chart"]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.customCharts = state.customCharts.filter(chart => String(chart.id) !== String(button.dataset.chartId));
+          renderCustomCharts();
+        });
+      });
+
+      requestAnimationFrame(() => {
+        state.customCharts.forEach(slot => drawCustomChart(slot));
+      });
+    }
+
+    function chartMetricOptions(selectedMetric) {
+      return [
+        ['weight', '비중'],
+        ['market_value', '평가금액'],
+        ['quantity', '수량'],
+        ['close_price', '종가'],
+      ].map(([value, label]) => `<option value="${value}" ${value === selectedMetric ? 'selected' : ''}>${label}</option>`).join('');
+    }
+
+    function drawCustomChart(slot) {
+      const canvas = document.getElementById(`customChart${slot.id}`);
+      if (!canvas) return;
+      const metric = slot.metric || 'weight';
+      const series = slot.keys
+        .map(key => state.selected.get(key))
+        .filter(Boolean)
+        .map(item => ({ ...item, history: currentHistory(item) }))
+        .filter(item => item.history.length);
+      drawHoldingSeriesCanvas(canvas, series, metric);
+      installChartZoom(canvas.id, 'holding');
+    }
+
+    function drawHoldingSeriesCanvas(canvas, series, metric) {
+      state.chartPoints.set(canvas.id, []);
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.max(1, rect.width * dpr);
+      canvas.height = Math.max(1, rect.height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const width = rect.width;
+      const height = rect.height;
+      ctx.clearRect(0, 0, width, height);
+
+      if (!series.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('표시할 종목이 없습니다.', 16, 28);
+        return;
+      }
+      if (metric === 'close_price') {
+        const pendingCloseItems = series.filter(item => isKrxTicker(item.ticker) && !item.closeLoaded);
+        if (pendingCloseItems.length) {
+          ctx.fillStyle = '#667085';
+          ctx.fillText('실제 종가 로딩 중...', 16, 28);
+          const unloadStartedItems = pendingCloseItems.filter(item => !item.closeLoading);
+          if (unloadStartedItems.length) loadCloseHistoriesForChart(unloadStartedItems);
+          return;
+        }
+      }
+
+      const validSeries = series.map(item => ({
+        ...item,
+        history: validMetricHistory(metric === 'close_price' ? item.closeHistory || [] : item.history, metric),
+      })).filter(item => item.history.length);
+      if (!validSeries.length) {
+        ctx.fillStyle = '#667085';
+        ctx.fillText('표시할 데이터가 없습니다.', 16, 28);
+        return;
+      }
+
+      const allDates = [...new Set(validSeries.flatMap(item => item.history.map(point => point.trade_date)))].sort();
+      const dates = zoomedDates(allDates, 'holding');
+      const visibleDateSet = new Set(dates);
+      const visibleSeries = validSeries.map(item => ({
+        ...item,
+        history: item.history.filter(point => visibleDateSet.has(point.trade_date)),
+      })).filter(item => item.history.length);
+      const max = Math.max(1, ...visibleSeries.flatMap(item => item.history.map(point => metricValue(point, metric)))) * 1.15;
+      const pad = { left: 52, right: 16, top: 18, bottom: 34 };
+      const x = index => pad.left + (dates.length === 1 ? 0 : index * (width - pad.left - pad.right) / (dates.length - 1));
+      const y = value => height - pad.bottom - (Number(value || 0) / max) * (height - pad.top - pad.bottom);
+
+      ctx.strokeStyle = '#d0d5dd';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, pad.top);
+      ctx.lineTo(pad.left, height - pad.bottom);
+      ctx.lineTo(width - pad.right, height - pad.bottom);
+      ctx.stroke();
+
+      [0, max / 2, max].forEach(value => {
+        ctx.fillStyle = '#667085';
+        ctx.fillText(chartAxisLabel(value, metric), 7, y(value) + 4);
+        ctx.strokeStyle = '#eef2f6';
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y(value));
+        ctx.lineTo(width - pad.right, y(value));
+        ctx.stroke();
+      });
+
+      const chartPoints = [];
+      visibleSeries.forEach(item => {
+        const byDate = new Map(item.history.map(point => [point.trade_date, point]));
+        const coords = dates.map((date, index) => {
+          const point = byDate.get(date);
+          if (!point || !hasMetricValue(point, metric)) return null;
+          const coord = [x(index), y(metricValue(point, metric))];
+          chartPoints.push({ x: coord[0], y: coord[1], item, point, metric, kind: 'holding' });
+          return coord;
+        });
+        drawLine(ctx, coords, item.color, { radius: 2.5 });
+      });
+      state.chartPoints.set(canvas.id, chartPoints);
+
+      ctx.fillStyle = '#667085';
+      dates.forEach((date, index) => {
+        if (index === 0 || index === dates.length - 1 || index % 8 === 0) {
+          ctx.save();
+          ctx.translate(x(index), height - 10);
+          ctx.rotate(-0.35);
+          ctx.fillText(date.slice(5), 0, 0);
+          ctx.restore();
+        }
+      });
+    }
+
     function drawEtfStatsChart() {
       const canvas = document.getElementById('etfStatsChart');
       if (!canvas) return;
+      hideChartTooltip();
+      state.chartPoints.set(canvas.id, []);
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.max(1, rect.width * dpr);
@@ -1127,6 +1346,13 @@
 
       const coords = visibleHistory.map((point, index) => [x(index), y(metricValue(point, metric))]);
       drawLine(ctx, coords, '#1867e8', { radius: 2.8 });
+      state.chartPoints.set(canvas.id, visibleHistory.map((point, index) => ({
+        x: coords[index][0],
+        y: coords[index][1],
+        point,
+        metric,
+        kind: 'etfStats',
+      })));
 
       ctx.fillStyle = '#667085';
       dates.forEach((date, index) => {
@@ -1213,6 +1439,57 @@
       return Math.max(0, Math.min(dateCount - 1, Math.round(ratio * Math.max(0, dateCount - 1))));
     }
 
+    function showChartTooltip(canvas, event) {
+      const points = state.chartPoints.get(canvas.id) || [];
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      let nearest = null;
+      for (const point of points) {
+        const distance = Math.hypot(point.x - x, point.y - y);
+        if (!nearest || distance < nearest.distance) nearest = { ...point, distance };
+      }
+      if (!nearest || nearest.distance > 18) {
+        hideChartTooltip();
+        return;
+      }
+      const tooltip = document.getElementById('chartTooltip');
+      tooltip.innerHTML = chartTooltipHtml(nearest);
+      tooltip.hidden = false;
+      const left = Math.min(window.innerWidth - 280, event.clientX + 14);
+      const top = Math.min(window.innerHeight - 170, event.clientY + 14);
+      tooltip.style.left = `${Math.max(8, left)}px`;
+      tooltip.style.top = `${Math.max(8, top)}px`;
+    }
+
+    function hideChartTooltip() {
+      const tooltip = document.getElementById('chartTooltip');
+      if (tooltip) tooltip.hidden = true;
+    }
+
+    function chartTooltipHtml(hit) {
+      if (hit.kind === 'etfStats') {
+        return `
+          <div class="chart-tooltip-title">ETF 통계</div>
+          <div class="chart-tooltip-row"><span>날짜</span><strong>${escapeHtml(hit.point.trade_date || '-')}</strong></div>
+          <div class="chart-tooltip-row"><span>${escapeHtml(metricLabel(hit.metric))}</span><strong>${escapeHtml(formatMetricValue(metricValue(hit.point, hit.metric), hit.metric))}</strong></div>
+        `;
+      }
+      const item = hit.item || {};
+      const point = hit.point || {};
+      const holdingPoint = currentHistory(item).find(row => row.trade_date === point.trade_date) || point;
+      const closePoint = item.closeHistory?.find(row => row.trade_date === point.trade_date);
+      return `
+        <div class="chart-tooltip-title">${escapeHtml(item.name || item.ticker || '')}</div>
+        <div class="chart-tooltip-row"><span>날짜</span><strong>${escapeHtml(point.trade_date || '-')}</strong></div>
+        <div class="chart-tooltip-row"><span>${escapeHtml(metricLabel(hit.metric))}</span><strong>${escapeHtml(formatMetricValue(metricValue(point, hit.metric), hit.metric))}</strong></div>
+        <div class="chart-tooltip-row"><span>수량</span><strong>${escapeHtml(fmtNum(holdingPoint.quantity, 2))}</strong></div>
+        <div class="chart-tooltip-row"><span>비중</span><strong>${escapeHtml(fmtPct(holdingPoint.weight))}</strong></div>
+        <div class="chart-tooltip-row"><span>평가금액</span><strong>${escapeHtml(fmtWon(holdingPoint.market_value))}</strong></div>
+        <div class="chart-tooltip-row"><span>종가</span><strong>${escapeHtml(closePoint?.close_price ? formatMetricValue(closePoint.close_price, 'close_price') : '-')}</strong></div>
+      `;
+    }
+
     function installChartZoom(canvasId, key) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
@@ -1254,6 +1531,7 @@
         setChartZoom(key, start, end, dates.length);
       });
       canvas.addEventListener('dblclick', () => resetChartZoom(key));
+      canvas.addEventListener('click', event => showChartTooltip(canvas, event));
     }
 
     function drawLine(ctx, coords, color, options = {}) {
@@ -1404,6 +1682,19 @@
       return fmtNum(value, 2);
     }
 
+    function metricLabel(metric) {
+      if (metric === 'weight') return '비중';
+      if (metric === 'market_value') return '평가금액';
+      if (metric === 'quantity') return '수량';
+      if (metric === 'close_price') return '종가';
+      if (metric === 'nav') return 'NAV';
+      if (metric === 'deviation_rate') return '괴리율';
+      if (metric === 'trading_value') return '거래대금';
+      if (metric === 'market_cap') return '시가총액';
+      if (metric === 'listed_shares') return '상장좌수';
+      return metric;
+    }
+
     function chartAxisLabel(value, metric) {
       if (metric === 'weight') return `${value.toFixed(1)}%`;
       if (metric === 'market_value') return shortNumber(value);
@@ -1470,6 +1761,7 @@
     document.getElementById('chartView').addEventListener('change', () => {
       drawChart();
     });
+    document.getElementById('addChart').addEventListener('click', addCustomChart);
     document.getElementById('etfStatsMetric').addEventListener('change', () => {
       resetChartZoom('etfStats');
     });
@@ -1486,6 +1778,7 @@
     });
     document.getElementById('clearSelected').addEventListener('click', () => {
       state.selected.clear();
+      state.customCharts = [];
       renderSelected();
       renderRows();
       resetChartZoom('holding');
@@ -1495,6 +1788,7 @@
     window.addEventListener('resize', () => {
       drawChart();
       drawEtfStatsChart();
+      renderCustomCharts();
     });
     init();
   </script>
